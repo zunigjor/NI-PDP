@@ -33,11 +33,11 @@ public:
         this->used = true;
     }
 
-    bool operator < (const Edge & other){
+    bool operator < (const Edge & other) {
         return this->weight < other.weight;
     }
 
-    friend ostream & operator << (ostream & os, const Edge & ge){
+    friend ostream & operator << (ostream & os, const Edge & ge) {
         os << "{(" << ge.vertices.first << ", " << ge.vertices.second << "), " << ge.weight << "}";
         return os;
     }
@@ -143,6 +143,14 @@ public:
         return all_of(visited.begin(), visited.end(), [](bool b){return b;});
     }
 
+    bool isLeaf() {
+        return this->edge_index >= int(this->edges.size());
+    }
+
+    bool isBetterThan(SolutionState best_state) {
+        return this->cost >= best_state.cost;
+    }
+
     int sumWeightRemainingEdges() {
         int sum = 0;
         for (auto i = this->edges.begin() + this->edge_index; i != this->edges.end(); ++i) {
@@ -165,138 +173,21 @@ public:
         this->edge_index++;
     }
 
-    static color_t getOppositeColor(color_t c){
+    static color_t getOppositeColor(color_t c) {
         return (c == RED) ? BLUE : RED;
     }
 };
 
 class ProblemInstance {
-public:
+private:
     string input_name;
     SolutionState initial_state;
     SolutionState best_state;
     // Metrics
-    unsigned int recursive_calls;
+    unsigned long long int recursive_calls;
     chrono::high_resolution_clock::time_point start_time;
-public:
-    ProblemInstance(string input_name, SolutionState initial_state) {
-        this->input_name = std::move(input_name);
-        this->initial_state = std::move(initial_state);
-        this->recursive_calls = 0;
-    }
-
-    bool noBetterSolutionPossible(SolutionState state){
-        if (state.cost + state.sumWeightRemainingEdges() < best_state.cost)
-            return true;
-        if (state.numOfUsedEdges() + state.numOfRemainingEdges() < state.num_of_vertices - 1)
-            return true;
-        return false;
-    }
-
-    void findBestState(SolutionState parent_state) {
-        this->recursive_calls++;
-        if (parent_state.edge_index >= int(parent_state.edges.size())) {
-            if (parent_state.isConnected() and parent_state.cost >= this->best_state.cost) {
-                this->best_state = parent_state;
-                return;
-            } else {
-                return;
-            }
-        }
-        if (this->noBetterSolutionPossible(parent_state))
-            return;
-
-        int u = parent_state.edges[parent_state.edge_index].vertices.first;
-        int v = parent_state.edges[parent_state.edge_index].vertices.second;
-        if ((parent_state.color[u] == RED and parent_state.color[v] == RED) or
-            (parent_state.color[u] == BLUE and parent_state.color[v] == BLUE)
-                ){
-            SolutionState opt_skip = parent_state;
-            opt_skip.skipEdge();
-            findBestState(opt_skip);
-        } else if (parent_state.color[u] == NO_COLOR and parent_state.color[v] == NO_COLOR){
-            {
-                SolutionState opt_add_red_blue = parent_state;
-                opt_add_red_blue.addEdge();
-                opt_add_red_blue.color[u] = RED;
-                opt_add_red_blue.color[v] = BLUE;
-                findBestState(opt_add_red_blue);
-            }
-            {
-                SolutionState opt_add_blue_red = parent_state;
-                opt_add_blue_red.addEdge();
-                opt_add_blue_red.color[u] = BLUE;
-                opt_add_blue_red.color[v] = RED;
-                findBestState(opt_add_blue_red);
-            }
-            {
-                SolutionState opt_skip_red_red = parent_state;
-                opt_skip_red_red.skipEdge();
-                opt_skip_red_red.color[u] = RED;
-                opt_skip_red_red.color[v] = RED;
-                findBestState(opt_skip_red_red);
-            }
-            {
-                SolutionState opt_skip_blue_blue = parent_state;
-                opt_skip_blue_blue.skipEdge();
-                opt_skip_blue_blue.color[u] = BLUE;
-                opt_skip_blue_blue.color[v] = BLUE;
-                findBestState(opt_skip_blue_blue);
-            }
-        } else if ((parent_state.color[u] == RED and parent_state.color[v] == NO_COLOR) or
-                   (parent_state.color[u] == BLUE and parent_state.color[v] == NO_COLOR)
-                ){
-            {
-                SolutionState opt_add_opposite = parent_state;
-                opt_add_opposite.addEdge();
-                opt_add_opposite.color[v] = SolutionState::getOppositeColor(opt_add_opposite.color[u]);
-                findBestState(opt_add_opposite);
-            }
-            {
-                SolutionState opt_skip_same = parent_state;
-                opt_skip_same.skipEdge();
-                opt_skip_same.color[v] = opt_skip_same.color[u];
-                findBestState(opt_skip_same);
-            }
-        } else if ((parent_state.color[u] == NO_COLOR and parent_state.color[v] == RED) or
-                   (parent_state.color[u] == NO_COLOR and parent_state.color[v] == BLUE)
-                ){
-            {
-                SolutionState opt_add_opposite = parent_state;
-                opt_add_opposite.addEdge();
-                opt_add_opposite.color[u] = SolutionState::getOppositeColor(opt_add_opposite.color[v]);
-                findBestState(opt_add_opposite);
-            }
-            {
-                SolutionState opt_skip_same = parent_state;
-                opt_skip_same.skipEdge();
-                opt_skip_same.color[u] = opt_skip_same.color[v];
-                findBestState(opt_skip_same);
-            }
-        } else if ((parent_state.color[u] == RED and parent_state.color[v] == BLUE) or
-                   (parent_state.color[u] == BLUE and parent_state.color[v] == RED)
-                ){
-            {
-                SolutionState opt_add = parent_state;
-                opt_add.addEdge();
-                findBestState(opt_add);
-            }
-        }
-    }
-
-    void findMaxConnectedBipartiteSubgraph() {
-        this->start_time = chrono::high_resolution_clock::now();
-        if (this->initial_state.isBipartite() and this->initial_state.isConnected()) {
-            this->best_state = this->initial_state;
-            this->outputBestState();
-            return;
-        }
-        this->initial_state.resetSolution();
-        this->findBestState(this->initial_state);
-        this->outputBestState();
-    }
-
-    void outputBestState() {
+private:
+    void printBestState() {
         ostringstream oss;
         auto end_time = chrono::high_resolution_clock::now();
         auto ms = chrono::duration_cast<chrono::milliseconds>(end_time - this->start_time);
@@ -328,18 +219,144 @@ public:
             if (edge.used)
                 oss << edge << endl;
         oss << "--------------------------------------------" << endl;
-        oss << "w_sum = " << this->best_state.cost << endl;
+        oss << "Weights sum = " << this->best_state.cost << endl;
         oss << "--------------------------------------------" << endl;
-        auto s = chrono::duration_cast<chrono::seconds>(ms);
-        ms -= chrono::duration_cast<chrono::milliseconds>(s);
-        auto m = chrono::duration_cast<chrono::minutes>(ms);
-        ms -= chrono::duration_cast<chrono::milliseconds>(m);
         auto h = chrono::duration_cast<chrono::hours>(ms);
         ms -= chrono::duration_cast<chrono::milliseconds>(h);
-        oss << "recursive calls: " << this->recursive_calls << endl;
-        oss << "took: " << h.count() << "h:" << m.count() << "m:" << s.count() << "." << ms.count() << "s" << endl;
+        auto m = chrono::duration_cast<chrono::minutes>(ms);
+        ms -= chrono::duration_cast<chrono::milliseconds>(m);
+        auto s = chrono::duration_cast<chrono::seconds>(ms);
+        ms -= chrono::duration_cast<chrono::milliseconds>(s);
+       oss << "Recursive calls: " << this->recursive_calls << endl;
+        oss << "Took: " << h.count() << "h:" << m.count() << "m:" << s.count() << "." << ms.count() << "s" << endl;
         oss << "============================================" << endl;
         cout << oss.str();
+    }
+
+    bool noBetterSolutionPossible(SolutionState state){
+        if (state.cost + state.sumWeightRemainingEdges() < best_state.cost)
+            return true;
+        if (state.numOfUsedEdges() + state.numOfRemainingEdges() < state.num_of_vertices - 1)
+            return true;
+        return false;
+    }
+
+    void findBestState(SolutionState parent_state) {
+        // Count recursive calls
+        this->recursive_calls++;
+        // Check if better solution found
+        if (parent_state.isLeaf()) {
+            if (parent_state.isConnected() and parent_state.isBetterThan(this->best_state)) {
+                this->best_state = parent_state;
+                return;
+            } else {
+                return;
+            }
+        }
+        // Cutting the tree of solutions
+        if (this->noBetterSolutionPossible(parent_state))
+            return;
+        // Color the graph to keep bipartite. Try all combinations of colors and adding/skipping edge.
+        int u = parent_state.edges[parent_state.edge_index].vertices.first;
+        int v = parent_state.edges[parent_state.edge_index].vertices.second;
+        if ((parent_state.color[u] == RED and parent_state.color[v] == RED) or
+            (parent_state.color[u] == BLUE and parent_state.color[v] == BLUE)) {
+            {
+                SolutionState opt_skip = parent_state;
+                opt_skip.skipEdge();
+                findBestState(opt_skip);
+            }
+        } else if (parent_state.color[u] == NO_COLOR and parent_state.color[v] == NO_COLOR){
+            {
+                SolutionState opt_add_red_blue = parent_state;
+                opt_add_red_blue.addEdge();
+                opt_add_red_blue.color[u] = RED;
+                opt_add_red_blue.color[v] = BLUE;
+                findBestState(opt_add_red_blue);
+            }
+            {
+                SolutionState opt_add_blue_red = parent_state;
+                opt_add_blue_red.addEdge();
+                opt_add_blue_red.color[u] = BLUE;
+                opt_add_blue_red.color[v] = RED;
+                findBestState(opt_add_blue_red);
+            }
+            {
+                SolutionState opt_skip_red_red = parent_state;
+                opt_skip_red_red.skipEdge();
+                opt_skip_red_red.color[u] = RED;
+                opt_skip_red_red.color[v] = RED;
+                findBestState(opt_skip_red_red);
+            }
+            {
+                SolutionState opt_skip_blue_blue = parent_state;
+                opt_skip_blue_blue.skipEdge();
+                opt_skip_blue_blue.color[u] = BLUE;
+                opt_skip_blue_blue.color[v] = BLUE;
+                findBestState(opt_skip_blue_blue);
+            }
+        } else if ((parent_state.color[u] == RED and parent_state.color[v] == NO_COLOR) or
+                   (parent_state.color[u] == BLUE and parent_state.color[v] == NO_COLOR)) {
+            {
+                SolutionState opt_add_opposite = parent_state;
+                opt_add_opposite.addEdge();
+                opt_add_opposite.color[v] = SolutionState::getOppositeColor(opt_add_opposite.color[u]);
+                findBestState(opt_add_opposite);
+            }
+            {
+                SolutionState opt_skip_same = parent_state;
+                opt_skip_same.skipEdge();
+                opt_skip_same.color[v] = opt_skip_same.color[u];
+                findBestState(opt_skip_same);
+            }
+        } else if ((parent_state.color[u] == NO_COLOR and parent_state.color[v] == RED) or
+                   (parent_state.color[u] == NO_COLOR and parent_state.color[v] == BLUE)) {
+            {
+                SolutionState opt_add_opposite = parent_state;
+                opt_add_opposite.addEdge();
+                opt_add_opposite.color[u] = SolutionState::getOppositeColor(opt_add_opposite.color[v]);
+                findBestState(opt_add_opposite);
+            }
+            {
+                SolutionState opt_skip_same = parent_state;
+                opt_skip_same.skipEdge();
+                opt_skip_same.color[u] = opt_skip_same.color[v];
+                findBestState(opt_skip_same);
+            }
+        } else if ((parent_state.color[u] == RED and parent_state.color[v] == BLUE) or
+                   (parent_state.color[u] == BLUE and parent_state.color[v] == RED)) {
+            {
+                SolutionState opt_add = parent_state;
+                opt_add.addEdge();
+                findBestState(opt_add);
+            }
+        }
+    }
+public:
+    ProblemInstance(string input_name, SolutionState initial_state) {
+        this->input_name = std::move(input_name);
+        this->initial_state = std::move(initial_state);
+        this->recursive_calls = 0;
+    }
+
+    string getInputName(){
+        return this->input_name;
+    }
+
+    int getBestStateCost(){
+        return this->best_state.cost;
+    }
+
+    void findMaxConnectedBipartiteSubgraph() {
+        this->start_time = chrono::high_resolution_clock::now();
+        if (this->initial_state.isBipartite() and this->initial_state.isConnected()) {
+            this->best_state = this->initial_state;
+            this->printBestState();
+            return;
+        }
+        this->initial_state.resetSolution();
+        this->findBestState(this->initial_state);
+        this->printBestState();
     }
 };
 
@@ -445,7 +462,53 @@ public:
 
 int main(int argc, char* argv[]) {
     vector<ProblemInstance> inputs = InputHandler::readInput(argc, argv);
-    for (auto problem_instance : inputs)
+    for (auto & problem_instance : inputs)
         problem_instance.findMaxConnectedBipartiteSubgraph();
+    // Assert
+    unordered_map<string, int> results;
+    // Easy
+    results["graf_10_3.txt"] = 1300;
+    results["graf_10_5.txt"] = 1885;
+    results["graf_10_6.txt"] = 2000;
+    results["graf_10_7.txt"] = 2348;
+    results["graf_12_3.txt"] = 1422;
+    results["graf_12_5.txt"] = 2219;
+    results["graf_12_6.txt"] = 2533;
+    results["graf_12_9.txt"] = 3437;
+    results["graf_13_9.txt"] = 3700;
+    results["graf_13_12.txt"] = 4182;
+    results["graf_15_4.txt"] = 2547;
+    results["graf_15_5.txt"] = 2892;
+    results["graf_15_6.txt"] = 3353;
+    results["graf_15_8.txt"] = 3984;
+    results["graf_15_12.txt"] = 5380;
+    results["graf_15_14.txt"] = 5578;
+    results["graf_17_10.txt"] = 5415;
+    // Hard
+    results["graf_20_16.txt"] = 9353;
+    results["graf_20_17.txt"] = 9768;
+    results["graf_20_19.txt"] = 10288;
+    results["graf_21_15.txt"] = 9570;
+    results["graf_22_17.txt"] = 11015;
+    results["graf_23_20.txt"] = 12902;
+    results["graf_24_23.txt"] = 14844;
+    results["graf_25_16.txt"] = 12105;
+    results["graf_25_22.txt"] = 15594;
+    results["graf_26_25.txt"] = 17477;
+    results["graf_27_19.txt"] = 15470;
+    results["graf_28_24.txt"] = 18729;
+    results["graf_29_26.txt"] = 20810;
+    results["graf_30_25.txt"] = 21336;
+    // Print if wrong result
+    for (auto problem_instance : inputs) {
+        string name = fs::path(problem_instance.getInputName()).filename();
+        if (results.count(name) > 0){
+            int expected = results[name];
+            int got = problem_instance.getBestStateCost();
+            if (got != expected){
+                cout << problem_instance.getInputName() << " expected: " << expected << " got: " << got << endl;
+            }
+        }
+    }
     return 0;
 }

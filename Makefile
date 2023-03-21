@@ -21,10 +21,23 @@ CP_2_EXE := checkpoint_2.exe
 CP_2_OUT := checkpoint_2.out.txt
 CP_2_OUT_HARD := checkpoint_2_hard.out.txt
 
+info:
+	$(info all)
+	$(info clean-checkpoint-1)
+	$(info build-checkpoint-1)
+	$(info run-checkpoint-1)
+	$(info run-checkpoint-1-hard)
+	$(info clean-checkpoint-2)
+	$(info build-checkpoint-2)
+	$(info run-checkpoint-2)
+	$(info run-checkpoint-2-hard)
+
+all: run-checkpoint-1 run-checkpoint-1-hard run-checkpoint-2 run-checkpoint-2-hard
 
 clean-checkpoint-1:
 	rm -f ./$(CP_1_DIR)/$(RESULTS_DIR)/$(CP_1_EXE)
 	rm -f ./$(CP_1_DIR)/$(RESULTS_DIR)/$(CP_1_OUT)
+	rm -f ./$(CP_1_DIR)/$(RESULTS_DIR)/$(CP_1_OUT_HARD)
 
 build-checkpoint-1:
 	cd $(CP_1_DIR) && $(CXX) $(CXX_FLAGS) $(CP_1_SRC) -o $(RESULTS_DIR)/$(CP_1_EXE)
@@ -35,9 +48,12 @@ run-checkpoint-1: build-checkpoint-1
 run-checkpoint-1-hard: build-checkpoint-1
 	cd $(CP_1_DIR) && { time ./$(RESULTS_DIR)/$(CP_1_EXE) --folder ../$(HARD_INPUT) ; } 2>&1 | tee $(RESULTS_DIR)/$(CP_1_OUT_HARD)
 
+########################################################################################################################
+
 clean-checkpoint-2:
 	rm -f ./$(CP_2_DIR)/$(RESULTS_DIR)/$(CP_2_EXE)
 	rm -f ./$(CP_2_DIR)/$(RESULTS_DIR)/$(CP_2_OUT)
+	rm -f ./$(CP_2_DIR)/$(RESULTS_DIR)/$(CP_2_OUT_HARD)
 
 build-checkpoint-2:
 	cd $(CP_2_DIR) && $(CXX) $(CXX_FLAGS) $(CP_2_SRC) -o $(RESULTS_DIR)/$(CP_2_EXE)
