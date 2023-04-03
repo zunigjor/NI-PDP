@@ -18,6 +18,20 @@
 namespace fs = std::filesystem;
 using namespace std;
 
+string prettyPrintElapsedTime(chrono::high_resolution_clock::time_point start_time,
+                              chrono::high_resolution_clock::time_point end_time) {
+    auto ms = chrono::duration_cast<chrono::milliseconds>(end_time - start_time);
+    auto h = chrono::duration_cast<chrono::hours>(ms);
+    ms -= chrono::duration_cast<chrono::milliseconds>(h);
+    auto m = chrono::duration_cast<chrono::minutes>(ms);
+    ms -= chrono::duration_cast<chrono::milliseconds>(m);
+    auto s = chrono::duration_cast<chrono::seconds>(ms);
+    ms -= chrono::duration_cast<chrono::milliseconds>(s);
+    ostringstream oss;
+    oss << h.count() << "h:" << m.count() << "m:" << s.count() << "." << ms.count() << "s";
+    return oss.str();
+}
+
 enum color_t {NO_COLOR, RED, BLUE};
 
 class Edge {
@@ -33,7 +47,7 @@ public:
         this->used = true;
     }
 
-    bool operator < (const Edge & other) {
+    bool operator < (const Edge & other) const {
         return this->weight < other.weight;
     }
 
@@ -143,11 +157,11 @@ public:
         return all_of(visited.begin(), visited.end(), [](bool b){return b;});
     }
 
-    bool isLeaf() {
+    bool isLeaf() const {
         return this->edge_index >= int(this->edges.size());
     }
 
-    bool isBetterThan(SolutionState best_state) {
+    bool isBetterThan(const SolutionState& best_state) const {
         return this->cost >= best_state.cost;
     }
 
@@ -159,7 +173,7 @@ public:
         return sum;
     }
 
-    int numOfRemainingEdges() {
+    int numOfRemainingEdges() const {
         return int(this->edges.size()) - this->edge_index;
     }
 
@@ -190,14 +204,13 @@ private:
     void printBestState() {
         ostringstream oss;
         auto end_time = chrono::high_resolution_clock::now();
-        auto ms = chrono::duration_cast<chrono::milliseconds>(end_time - this->start_time);
         oss << "============================================" << endl;
         oss << "Result of: " << this->input_name << endl;
         oss << "--------------------------------------------" << endl;
         vector<size_t> reds;
         vector<size_t> blues;
         for (size_t i = 0; i < this->best_state.color.size(); i++) {
-            if(this->best_state.color[i] == RED)
+            if (this->best_state.color[i] == RED)
                 reds.push_back(i);
             else
                 blues.push_back(i);
@@ -215,25 +228,27 @@ private:
         }
         oss << "}" << endl;
         oss << "--------------------------------------------" << endl;
-        for (auto & edge : this->best_state.edges)
+        vector<Edge> used_edges;
+        for (Edge &edge: this->best_state.edges)
             if (edge.used)
-                oss << edge << endl;
+                used_edges.push_back(edge);
+        oss << "EDGES: ";
+        for (auto i = used_edges.begin(); i != used_edges.end(); i++)
+            if (i->used) {
+                oss << *i;
+                if (i + 1 != used_edges.end()) oss << ", ";
+            }
+        oss << endl;
         oss << "--------------------------------------------" << endl;
         oss << "Weights sum = " << this->best_state.cost << endl;
         oss << "--------------------------------------------" << endl;
-        auto h = chrono::duration_cast<chrono::hours>(ms);
-        ms -= chrono::duration_cast<chrono::milliseconds>(h);
-        auto m = chrono::duration_cast<chrono::minutes>(ms);
-        ms -= chrono::duration_cast<chrono::milliseconds>(m);
-        auto s = chrono::duration_cast<chrono::seconds>(ms);
-        ms -= chrono::duration_cast<chrono::milliseconds>(s);
         oss << "Recursive calls: " << this->recursive_calls << endl;
-        oss << "Took: " << h.count() << "h:" << m.count() << "m:" << s.count() << "." << ms.count() << "s" << endl;
+        oss << "Took: " << prettyPrintElapsedTime(this->start_time, end_time) << endl;
         oss << "============================================" << endl;
         cout << oss.str();
     }
 
-    bool noBetterSolutionPossible(SolutionState state){
+    bool noBetterSolutionPossible(SolutionState state) const{
         if (state.cost + state.sumWeightRemainingEdges() < best_state.cost)
             return true;
         if (state.numOfUsedEdges() + state.numOfRemainingEdges() < state.num_of_vertices - 1)
@@ -241,7 +256,7 @@ private:
         return false;
     }
 
-    void findBestState(SolutionState parent_state) {
+    void findBestStateDFS(SolutionState parent_state) {
         // Count recursive calls
         #pragma omp critical
         {
@@ -273,7 +288,7 @@ private:
                 opt_skip.skipEdge();
                 #pragma omp task
                 {
-                    findBestState(opt_skip);
+                    findBestStateDFS(opt_skip);
                 }
             }
         } else if (parent_state.color[u] == NO_COLOR and parent_state.color[v] == NO_COLOR){
@@ -284,7 +299,7 @@ private:
                 opt_add_red_blue.color[v] = BLUE;
                 #pragma omp task
                 {
-                    findBestState(opt_add_red_blue);
+                    findBestStateDFS(opt_add_red_blue);
                 }
             }
             {
@@ -294,7 +309,7 @@ private:
                 opt_add_blue_red.color[v] = RED;
                 #pragma omp task
                 {
-                    findBestState(opt_add_blue_red);
+                    findBestStateDFS(opt_add_blue_red);
                 }
             }
             {
@@ -304,7 +319,7 @@ private:
                 opt_skip_red_red.color[v] = RED;
                 #pragma omp task
                 {
-                    findBestState(opt_skip_red_red);
+                    findBestStateDFS(opt_skip_red_red);
                 }
             }
             {
@@ -314,7 +329,7 @@ private:
                 opt_skip_blue_blue.color[v] = BLUE;
                 #pragma omp task
                 {
-                    findBestState(opt_skip_blue_blue);
+                    findBestStateDFS(opt_skip_blue_blue);
                 }
             }
         } else if ((parent_state.color[u] == RED and parent_state.color[v] == NO_COLOR) or
@@ -325,7 +340,7 @@ private:
                 opt_add_opposite.color[v] = SolutionState::getOppositeColor(opt_add_opposite.color[u]);
                 #pragma omp task
                 {
-                    findBestState(opt_add_opposite);
+                    findBestStateDFS(opt_add_opposite);
                 }
             }
             {
@@ -334,7 +349,7 @@ private:
                 opt_skip_same.color[v] = opt_skip_same.color[u];
                 #pragma omp task
                 {
-                    findBestState(opt_skip_same);
+                    findBestStateDFS(opt_skip_same);
                 }
             }
         } else if ((parent_state.color[u] == NO_COLOR and parent_state.color[v] == RED) or
@@ -345,7 +360,7 @@ private:
                 opt_add_opposite.color[u] = SolutionState::getOppositeColor(opt_add_opposite.color[v]);
                 #pragma omp task
                 {
-                    findBestState(opt_add_opposite);
+                    findBestStateDFS(opt_add_opposite);
                 }
             }
             {
@@ -354,7 +369,7 @@ private:
                 opt_skip_same.color[u] = opt_skip_same.color[v];
                 #pragma omp task
                 {
-                    findBestState(opt_skip_same);
+                    findBestStateDFS(opt_skip_same);
                 }
             }
         } else if ((parent_state.color[u] == RED and parent_state.color[v] == BLUE) or
@@ -364,7 +379,7 @@ private:
                 opt_add.addEdge();
                 #pragma omp task
                 {
-                    findBestState(opt_add);
+                    findBestStateDFS(opt_add);
                 }
             }
         }
@@ -380,7 +395,7 @@ public:
         return this->input_name;
     }
 
-    int getBestStateCost(){
+    int getBestStateCost() const{
         return this->best_state.cost;
     }
 
@@ -388,13 +403,12 @@ public:
         this->start_time = chrono::high_resolution_clock::now();
         if (this->initial_state.isBipartite() and this->initial_state.isConnected()) {
             this->best_state = this->initial_state;
-            this->printBestState();
-            return;
+        } else {
+            this->initial_state.resetSolution();
+            #pragma omp parallel
+                #pragma omp single
+                    this->findBestStateDFS(this->initial_state);
         }
-        this->initial_state.resetSolution();
-        #pragma omp parallel
-            #pragma omp single
-                this->findBestState(this->initial_state);
         this->printBestState();
     }
 };
@@ -500,9 +514,21 @@ public:
 };
 
 int main(int argc, char* argv[]) {
+    // Read input
     vector<ProblemInstance> inputs = InputHandler::readInput(argc, argv);
+    // Measure time
+    auto start_time_total = chrono::high_resolution_clock::now();
+    // Find solutions
     for (auto & problem_instance : inputs)
         problem_instance.findMaxConnectedBipartiteSubgraph();
+    // End of time measure
+    auto end_time_total = chrono::high_resolution_clock::now();
+    // Print total time if more than one result
+    if (inputs.size() > 1) {
+        cout << "============================================" << endl;
+        cout << "Total time: " << prettyPrintElapsedTime(start_time_total, end_time_total) << endl;
+        cout << "============================================" << endl;
+    }
     // Assert
     unordered_map<string, int> results;
     // Easy

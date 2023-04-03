@@ -2,5 +2,4 @@
 .idea
 cmake-build-debug
 # Ignore results
-checkpoint_1/results
-checkpoint_2/results
+*/results/*
