@@ -6,4 +6,4 @@ set(CMAKE_CXX_FLAGS "-pedantic -Wall -Wextra -fopenmp -O3")
 
 add_executable(sequential sequential/sequential.cpp)
 add_executable(parallel_task parallel_task/parallel_task.cpp)
-add_executable(checkpoint_3 checkpoint_3/checkpoint_3.cpp)
+add_executable(parallel_data parallel_data/parallel_data.cpp)

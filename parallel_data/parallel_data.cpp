@@ -15,12 +15,14 @@
 #include <queue>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 #include <omp.h>
 
 #define MAX_VERTICES 150
 #define MAX_EDGES 11175 // 150 choose 2
 #define MAX_WEIGHT 120
 #define MIN_WEIGHT 80
+
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -100,13 +102,13 @@ class SolutionState {
 public:
     color_t colors[MAX_VERTICES] = {NO_COLOR};
     uint8_t num_of_vertices = 0; // < 150
-    uint16_t edge_index = 0; // < 11175
-    uint16_t used_edges = 0; // < 11175
-    uint32_t cost = 0;
-    uint32_t sum_cost_all = 0;
+    uint16_t edge_index = 0; // < 11175 = (150 choose 2)
+    uint16_t used_edges = 0; // < 11175 = (150 choose 2)
+    uint32_t cost = 0; // < 1341000 = 11175 * 120
+    uint32_t sum_cost_all = 0; // < 1341000 = 11175 * 120
     Edge * edges = nullptr;
-    uint16_t edges_size = 0; // < 11175
-    uint32_t edges_total_weight = 0;
+    uint16_t edges_size = 0; // < 11175 = (150 choose 2)
+    uint32_t edges_total_weight = 0; // < 1341000 = 11175 * 120
 public:
     void resetSolution() {
         memset(colors, NO_COLOR, sizeof(colors));
@@ -212,6 +214,8 @@ private:
     uint16_t edges_size;
     SolutionState initial_state;
     SolutionState best_state;
+    // Data parallelism
+    vector<SolutionState> solution_states_queue;
     // Metrics
     string input_name;
     uint64_t recursive_calls;
@@ -268,6 +272,110 @@ private:
         return false;
     }
 
+    size_t solutionQueueLimit() {
+        return size_t(thread::hardware_concurrency() * 2);
+    }
+
+    void generateStatesQueue(SolutionState initial_state) {
+        this->solution_states_queue.push_back(initial_state);
+        while (solution_states_queue.size() < solutionQueueLimit()) {
+            findBestStateBFS(solution_states_queue.front());
+            solution_states_queue.erase(solution_states_queue.begin());
+        }
+    }
+
+    void findBestStateBFS(SolutionState state) {
+        // Count recursive calls
+        recursive_calls++;
+        // Check if better solution found
+        if (state.isLeaf()) {
+            if (state.isConnected() and state.isBetterThan(best_state)) {
+                best_state = state;
+                return;
+            } else {
+                return;
+            }
+        }
+        // Cut the tree of solutions
+        if (noBetterSolutionPossible(state))
+            return;
+        // Color the graph to keep bipartity.
+        int u = edges[state.edge_index].u;
+        int v = edges[state.edge_index].v;
+        if ((state.colors[u] == RED and state.colors[v] == RED) or
+            (state.colors[u] == BLUE and state.colors[v] == BLUE)){
+            {
+                SolutionState opt_skip = state;
+                opt_skip.skipEdge();
+                solution_states_queue.push_back(opt_skip);
+            }
+        } else if (state.colors[u] == NO_COLOR and state.colors[v] == NO_COLOR) {
+            {
+                SolutionState opt_add_red_blue = state;
+                opt_add_red_blue.addEdge();
+                opt_add_red_blue.colors[u] = RED;
+                opt_add_red_blue.colors[v] = BLUE;
+                solution_states_queue.push_back(opt_add_red_blue);
+            }
+            {
+                SolutionState opt_add_blue_red = state;
+                opt_add_blue_red.addEdge();
+                opt_add_blue_red.colors[u] = BLUE;
+                opt_add_blue_red.colors[v] = RED;
+                solution_states_queue.push_back(opt_add_blue_red);
+            }
+            {
+                SolutionState opt_skip_red_red = state;
+                opt_skip_red_red.skipEdge();
+                opt_skip_red_red.colors[u] = RED;
+                opt_skip_red_red.colors[v] = RED;
+                solution_states_queue.push_back(opt_skip_red_red);
+            }
+            {
+                SolutionState opt_skip_blue_blue = state;
+                opt_skip_blue_blue.skipEdge();
+                opt_skip_blue_blue.colors[u] = BLUE;
+                opt_skip_blue_blue.colors[v] = BLUE;
+                solution_states_queue.push_back(opt_skip_blue_blue);
+            }
+        } else if ((state.colors[u] == RED and state.colors[v] == NO_COLOR) or
+                   (state.colors[u] == BLUE and state.colors[v] == NO_COLOR)) {
+            {
+                SolutionState opt_add_opposite = state;
+                opt_add_opposite.addEdge();
+                opt_add_opposite.colors[v] = SolutionState::getOppositeColor(opt_add_opposite.colors[u]);
+                solution_states_queue.push_back(opt_add_opposite);
+            }
+            {
+                SolutionState opt_skip_same = state;
+                opt_skip_same.skipEdge();
+                opt_skip_same.colors[v] = opt_skip_same.colors[u];
+                solution_states_queue.push_back(opt_skip_same);
+            }
+        } else if ((state.colors[u] == NO_COLOR and state.colors[v] == RED) or
+                   (state.colors[u] == NO_COLOR and state.colors[v] == BLUE)) {
+            {
+                SolutionState opt_add_opposite = state;
+                opt_add_opposite.addEdge();
+                opt_add_opposite.colors[u] = SolutionState::getOppositeColor(opt_add_opposite.colors[v]);
+                solution_states_queue.push_back(opt_add_opposite);
+            }
+            {
+                SolutionState opt_skip_same = state;
+                opt_skip_same.skipEdge();
+                opt_skip_same.colors[u] = opt_skip_same.colors[v];
+                solution_states_queue.push_back(opt_skip_same);
+            }
+        } else if ((state.colors[u] == RED and state.colors[v] == BLUE) or
+                   (state.colors[u] == BLUE and state.colors[v] == RED)) {
+            {
+                SolutionState opt_add = state;
+                opt_add.addEdge();
+                solution_states_queue.push_back(opt_add);
+            }
+        }
+    }
+
     void findBestStateDFS(SolutionState state) {
         // Count recursive calls
         #pragma omp atomic
@@ -296,10 +404,7 @@ private:
             {
                 SolutionState opt_skip = state;
                 opt_skip.skipEdge();
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_skip);
-                }
+                findBestStateDFS(opt_skip);
             }
         } else if (state.colors[u] == NO_COLOR and state.colors[v] == NO_COLOR) {
             {
@@ -307,40 +412,28 @@ private:
                 opt_add_red_blue.addEdge();
                 opt_add_red_blue.colors[u] = RED;
                 opt_add_red_blue.colors[v] = BLUE;
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_add_red_blue);
-                }
+                findBestStateDFS(opt_add_red_blue);
             }
             {
                 SolutionState opt_add_blue_red = state;
                 opt_add_blue_red.addEdge();
                 opt_add_blue_red.colors[u] = BLUE;
                 opt_add_blue_red.colors[v] = RED;
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_add_blue_red);
-                }
+                findBestStateDFS(opt_add_blue_red);
             }
             {
                 SolutionState opt_skip_red_red = state;
                 opt_skip_red_red.skipEdge();
                 opt_skip_red_red.colors[u] = RED;
                 opt_skip_red_red.colors[v] = RED;
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_skip_red_red);
-                }
+                findBestStateDFS(opt_skip_red_red);
             }
             {
                 SolutionState opt_skip_blue_blue = state;
                 opt_skip_blue_blue.skipEdge();
                 opt_skip_blue_blue.colors[u] = BLUE;
                 opt_skip_blue_blue.colors[v] = BLUE;
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_skip_blue_blue);
-                }
+                findBestStateDFS(opt_skip_blue_blue);
             }
         } else if ((state.colors[u] == RED and state.colors[v] == NO_COLOR) or
                    (state.colors[u] == BLUE and state.colors[v] == NO_COLOR)) {
@@ -348,17 +441,13 @@ private:
                 SolutionState opt_add_opposite = state;
                 opt_add_opposite.addEdge();
                 opt_add_opposite.colors[v] = SolutionState::getOppositeColor(opt_add_opposite.colors[u]);
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_add_opposite);
-                }
+                findBestStateDFS(opt_add_opposite);
             }
             {
                 SolutionState opt_skip_same = state;
                 opt_skip_same.skipEdge();
                 opt_skip_same.colors[v] = opt_skip_same.colors[u];
-                #pragma omp task
-                    findBestStateDFS(opt_skip_same);
+                findBestStateDFS(opt_skip_same);
             }
         } else if ((state.colors[u] == NO_COLOR and state.colors[v] == RED) or
                    (state.colors[u] == NO_COLOR and state.colors[v] == BLUE)) {
@@ -366,32 +455,23 @@ private:
                 SolutionState opt_add_opposite = state;
                 opt_add_opposite.addEdge();
                 opt_add_opposite.colors[u] = SolutionState::getOppositeColor(opt_add_opposite.colors[v]);
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_add_opposite);
-                }
+                findBestStateDFS(opt_add_opposite);
             }
             {
                 SolutionState opt_skip_same = state;
                 opt_skip_same.skipEdge();
                 opt_skip_same.colors[u] = opt_skip_same.colors[v];
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_skip_same);
-                }
+                findBestStateDFS(opt_skip_same);
             }
         } else if ((state.colors[u] == RED and state.colors[v] == BLUE) or
                    (state.colors[u] == BLUE and state.colors[v] == RED)) {
             {
                 SolutionState opt_add = state;
                 opt_add.addEdge();
-                #pragma omp task
-                {
-                    findBestStateDFS(opt_add);
-                }
+                findBestStateDFS(opt_add);
             }
         }
-    };
+    }
 public:
     ProblemInstance(string input_name, int num_of_vertices, vector<Edge> edges) {
         for (edges_size = 0; edges_size < min(sizeof(this->edges), edges.size()); edges_size++) {
@@ -418,13 +498,16 @@ public:
     void findMaxConnectedBipartiteSubgraph() {
         start_time = chrono::high_resolution_clock::now();
         initial_state.edges = this->edges;
+        recursive_calls = 0;
         if (initial_state.isBipartite() and initial_state.isConnected()) {
             best_state = initial_state;
         } else {
             initial_state.resetSolution();
-            #pragma omp parallel
-                #pragma omp single
-                    findBestStateDFS(initial_state);
+            generateStatesQueue(initial_state);
+            #pragma omp parallel for
+            for (auto & solution_state : solution_states_queue) {
+                findBestStateDFS(solution_state);
+            }
         }
         printResult();
     }

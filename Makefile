@@ -10,10 +10,10 @@ HARD_INPUT := inputs/hard
 PROFILER := /usr/lib/libprofiler.so
 PROFILER_FILE := profiler.prof
 PROFILER_FREQ := 100000
-PROFILER_INPUT := inputs/hard/graf_23_20.txt
+PROFILER_INPUT := inputs/medium/graf_23_20.txt
 PROFILER_PDF := profiler.pdf
 
-clean: clean-sequential clean-parallel-task clean-checkpoint-3
+clean: clean-sequential clean-parallel-task clean-parallel-data
 
 ########################################################################################################################
 # Sequential solution settings
@@ -27,7 +27,7 @@ SEQ_OUT_HARD := $(SEQ)_hard.out.txt
 # Sequential solution targets
 clean-sequential:
 	rm -f ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_EXE)
-	rm -f ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_EASY) ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_HARD)
+	rm -f ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_EASY) ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_MEDIUM) ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_HARD)
 	rm -f ./$(SEQ)/$(RESULTS_DIR)/$(PROFILER_FILE) ./$(SEQ)/$(RESULTS_DIR)/$(PROFILER_PDF)
 
 build-sequential:
@@ -59,10 +59,10 @@ PT_EXE := $(PT).exe
 PT_OUT_EASY := $(PT)_easy.out.txt
 PT_OUT_MEDIUM := $(PT)_medium.out.txt
 PT_OUT_HARD := $(PT)_hard.out.txt
-# Parallel task  targets
+# Parallel task targets
 clean-parallel-task:
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_EXE)
-	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_EASY) ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_HARD)
+	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_EASY) ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_MEDIUM) ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_HARD)
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PROFILER_FILE) ./$(PT)/$(RESULTS_DIR)/$(PROFILER_PDF)
 
 build-parallel-task:
@@ -86,38 +86,38 @@ profile-parallel-task: build-parallel-task
 	cd $(PT)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(PT_EXE) --file ../../$(PROFILER_INPUT)
 	cd $(PT)/$(RESULTS_DIR) && pprof -pdf ./$(PT_EXE) $(PROFILER_FILE) > $(PROFILER_PDF)
 ########################################################################################################################
-# checkpoint_3 settings
-CP_3_CXX_FLAGS := -pedantic -Wall -Wextra -fopenmp -O3 -std=c++17
-CP_3 := checkpoint_3
-CP_3_SRC := $(CP_3).cpp
-CP_3_EXE := $(CP_3).exe
-CP_3_OUT_EASY := $(CP_3)_easy.out.txt
-CP_3_OUT_MEDIUM := $(CP_3)_medium.out.txt
-CP_3_OUT_HARD := $(CP_3)_hard.out.txt
-# Checkpoint 3 targets
-clean-checkpoint-3:
-	rm -f ./$(CP_3)/$(RESULTS_DIR)/$(CP_3_EXE)
-	rm -f ./$(CP_3)/$(RESULTS_DIR)/$(CP_3_OUT_EASY) ./$(CP_3)/$(RESULTS_DIR)/$(CP_3_OUT_HARD)
-	rm -f ./$(CP_3)/$(RESULTS_DIR)/$(PROFILER_FILE) ./$(CP_3)/$(RESULTS_DIR)/$(PROFILER_PDF)
+# Parallel data settings
+PD_CXX_FLAGS := -pedantic -Wall -Wextra -fopenmp -O3 -std=c++17
+PD := parallel_data
+PD_SRC := $(PD).cpp
+PD_EXE := $(PD).exe
+PD_OUT_EASY := $(PD)_easy.out.txt
+PD_OUT_MEDIUM := $(PD)_medium.out.txt
+PD_OUT_HARD := $(PD)_hard.out.txt
+# Parallel data targets
+clean-parallel-data:
+	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_EXE)
+	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_EASY) ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_MEDIUM) ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_HARD)
+	rm -f ./$(PD)/$(RESULTS_DIR)/$(PROFILER_FILE) ./$(PD)/$(RESULTS_DIR)/$(PROFILER_PDF)
 
-build-checkpoint-3:
-	rm -f ./$(CP_3)/$(RESULTS_DIR)/$(CP_3_EXE)
-	cd $(CP_3) && $(CXX) $(CP_3_CXX_FLAGS) $(CP_3_SRC) -o $(RESULTS_DIR)/$(CP_3_EXE)
+build-parallel-data:
+	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_EXE)
+	cd $(PD) && $(CXX) $(PD_CXX_FLAGS) $(PD_SRC) -o $(RESULTS_DIR)/$(PD_EXE)
 
-run-checkpoint-3-easy: build-checkpoint-3
-	rm -f ./$(CP_3)/$(RESULTS_DIR)/$(CP_3_OUT_EASY)
-	cd $(CP_3) && ./$(RESULTS_DIR)/$(CP_3_EXE) --folder ../$(EASY_INPUT) | tee $(RESULTS_DIR)/$(CP_3_OUT_EASY)
+run-parallel-data-easy: build-parallel-data
+	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_EASY)
+	cd $(PD) && ./$(RESULTS_DIR)/$(PD_EXE) --folder ../$(EASY_INPUT) | tee $(RESULTS_DIR)/$(PD_OUT_EASY)
 
-run-checkpoint-3-medium: build-checkpoint-3
-	rm -f ./$(CP_3)/$(RESULTS_DIR)/$(CP_3_OUT_MEDIUM)
-	cd $(CP_3) && ./$(RESULTS_DIR)/$(CP_3_EXE) --folder ../$(MEDIUM_INPUT) | tee $(RESULTS_DIR)/$(CP_3_OUT_MEDIUM)
+run-parallel-data-medium: build-parallel-data
+	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_MEDIUM)
+	cd $(PD) && ./$(RESULTS_DIR)/$(PD_EXE) --folder ../$(MEDIUM_INPUT) | tee $(RESULTS_DIR)/$(PD_OUT_MEDIUM)
 
-run-checkpoint-3-hard: build-checkpoint-3
-	rm -f ./$(CP_3)/$(RESULTS_DIR)/$(CP_3_OUT_HARD)
-	cd $(CP_3) && ./$(RESULTS_DIR)/$(CP_3_EXE) --folder ../$(HARD_INPUT) | tee $(RESULTS_DIR)/$(CP_3_OUT_HARD)
+run-parallel-data-hard: build-parallel-data
+	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_HARD)
+	cd $(PD) && ./$(RESULTS_DIR)/$(PD_EXE) --folder ../$(HARD_INPUT) | tee $(RESULTS_DIR)/$(PD_OUT_HARD)
 
-profile-checkpoint-3: build-checkpoint-3
-	rm -f $(CP_3)/$(RESULTS_DIR)/$(PROFILER_FILE) $(CP_3)/$(RESULTS_DIR)/$(PROFILER_PDF)
-	cd $(CP_3)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(CP_3_EXE) --file ../../$(PROFILER_INPUT)
-	cd $(CP_3)/$(RESULTS_DIR) && pprof -pdf ./$(CP_3_EXE) $(PROFILER_FILE) > $(PROFILER_PDF)
+profile-parallel-data: build-parallel-data
+	rm -f $(PD)/$(RESULTS_DIR)/$(PROFILER_FILE) $(PD)/$(RESULTS_DIR)/$(PROFILER_PDF)
+	cd $(PD)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(PD_EXE) --file ../../$(PROFILER_INPUT)
+	cd $(PD)/$(RESULTS_DIR) && pprof -pdf ./$(PD_EXE) $(PROFILER_FILE) > $(PROFILER_PDF)
 ########################################################################################################################

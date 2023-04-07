@@ -25,7 +25,7 @@ using namespace std;
 namespace fs = std::filesystem;
 using time_point = chrono::high_resolution_clock::time_point;
 
-enum color_t {NO_COLOR, RED, BLUE};
+enum color_t : uint8_t {NO_COLOR, RED, BLUE};
 
 class Edge;
 class SolutionState;
@@ -226,7 +226,7 @@ private:
 
     void findBestStateDFS(SolutionState state) {
         // Count recursive calls
-        this->recursive_calls++;
+        recursive_calls++;
         // Check if better solution found
         if (state.isLeaf()) {
             if (state.isConnected() and state.isBetterThan(best_state)) {

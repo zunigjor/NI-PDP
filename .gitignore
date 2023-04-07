@@ -2,4 +2,5 @@
 .idea
 cmake-build-debug
 # Ignore results
-*/results/*
+*/results/*.exe
+*/results/*.out*
