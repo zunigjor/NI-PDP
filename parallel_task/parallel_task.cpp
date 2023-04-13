@@ -214,7 +214,6 @@ private:
     SolutionState best_state;
     // Metrics
     string input_name;
-    uint64_t recursive_calls;
     time_point start_time;
 private:
     void printResult() {
@@ -255,7 +254,6 @@ private:
         cout << "--------------------------------------------" << endl;
         cout << "Weights sum = " << best_state.cost << endl;
         cout << "--------------------------------------------" << endl;
-        cout << "Recursive calls: " << formatWithCommas(recursive_calls) << endl;
         cout << "Took: " << prettyPrintElapsedTime(start_time, end_time) << endl;
         cout << "============================================" << endl;
     }
@@ -269,9 +267,6 @@ private:
     }
 
     void findBestStateDFS(SolutionState state) {
-        // Count recursive calls
-        #pragma omp atomic
-            recursive_calls++;
         // Check if better solution found
         if (state.isLeaf()) {
             if (state.isConnected() and state.isBetterThan(best_state)) {
@@ -404,7 +399,6 @@ public:
         best_state = this->initial_state;
 
         this->input_name = std::move(input_name);
-        recursive_calls = 0;
     }
 
     string getInputName() {
