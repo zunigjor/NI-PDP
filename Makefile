@@ -13,7 +13,7 @@ PROFILER_FREQ := 100000
 PROFILER_INPUT := inputs/medium/graf_23_20.txt
 PROFILER_PDF := profiler.pdf
 
-clean: clean-sequential clean-parallel-task clean-parallel-data
+clean: clean-sequential clean-parallel-task clean-parallel-data clean-mpi
 
 ########################################################################################################################
 # Sequential solution settings
@@ -36,15 +36,15 @@ build-sequential:
 
 run-sequential-easy: build-sequential
 	rm -f ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_EASY)
-	cd $(SEQ) && ./$(RESULTS_DIR)/$(SEQ_EXE) --folder ../$(EASY_INPUT) | tee $(RESULTS_DIR)/$(SEQ_OUT_EASY)
+	cd $(SEQ)/$(RESULTS_DIR) && ./$(SEQ_EXE) --folder ../../$(EASY_INPUT) | tee ./$(SEQ_OUT_EASY)
 
 run-sequential-medium: build-sequential
 	rm -f ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_MEDIUM)
-	cd $(SEQ) && ./$(RESULTS_DIR)/$(SEQ_EXE) --folder ../$(MEDIUM_INPUT) | tee $(RESULTS_DIR)/$(SEQ_OUT_MEDIUM)
+	cd $(SEQ)/$(RESULTS_DIR) && ./$(SEQ_EXE) --folder ../../$(MEDIUM_INPUT) | tee ./$(SEQ_OUT_MEDIUM)
 
 run-sequential-hard: build-sequential
 	rm -f ./$(SEQ)/$(RESULTS_DIR)/$(SEQ_OUT_HARD)
-	cd $(SEQ) && ./$(RESULTS_DIR)/$(SEQ_EXE) --folder ../$(HARD_INPUT) | tee $(RESULTS_DIR)/$(SEQ_OUT_HARD)
+	cd $(SEQ)/$(RESULTS_DIR) && ./$(SEQ_EXE) --folder ../../$(HARD_INPUT) | tee ./$(SEQ_OUT_HARD)
 
 profile-sequential: build-sequential
 	rm -f $(SEQ)/$(RESULTS_DIR)/$(PROFILER_FILE) $(SEQ)/$(RESULTS_DIR)/$(PROFILER_PDF)
@@ -71,15 +71,15 @@ build-parallel-task:
 
 run-parallel-task-easy: build-parallel-task
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_EASY)
-	cd $(PT) && ./$(RESULTS_DIR)/$(PT_EXE) --folder ../$(EASY_INPUT) | tee $(RESULTS_DIR)/$(PT_OUT_EASY)
+	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) --folder ../../$(EASY_INPUT) | tee ./$(PT_OUT_EASY)
 
 run-parallel-task-medium: build-parallel-task
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_MEDIUM)
-	cd $(PT) && ./$(RESULTS_DIR)/$(PT_EXE) --folder ../$(MEDIUM_INPUT) | tee $(RESULTS_DIR)/$(PT_OUT_MEDIUM)
+	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) --folder ../../$(MEDIUM_INPUT) | tee ./$(PT_OUT_MEDIUM)
 
 run-parallel-task-hard: build-parallel-task
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_HARD)
-	cd $(PT) && ./$(RESULTS_DIR)/$(PT_EXE) --folder ../$(HARD_INPUT) | tee $(RESULTS_DIR)/$(PT_OUT_HARD)
+	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) --folder ../../$(HARD_INPUT) | tee ./$(PT_OUT_HARD)
 
 profile-parallel-task: build-parallel-task
 	rm -f $(PT)/$(RESULTS_DIR)/$(PROFILER_FILE) $(PT)/$(RESULTS_DIR)/$(PROFILER_PDF)
@@ -106,18 +106,52 @@ build-parallel-data:
 
 run-parallel-data-easy: build-parallel-data
 	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_EASY)
-	cd $(PD) && ./$(RESULTS_DIR)/$(PD_EXE) --folder ../$(EASY_INPUT) | tee $(RESULTS_DIR)/$(PD_OUT_EASY)
+	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) --folder ../$(EASY_INPUT) | tee ./$(PD_OUT_EASY)
 
 run-parallel-data-medium: build-parallel-data
 	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_MEDIUM)
-	cd $(PD) && ./$(RESULTS_DIR)/$(PD_EXE) --folder ../$(MEDIUM_INPUT) | tee $(RESULTS_DIR)/$(PD_OUT_MEDIUM)
+	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) --folder ../../$(MEDIUM_INPUT) | tee ./$(PD_OUT_MEDIUM)
 
 run-parallel-data-hard: build-parallel-data
 	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_HARD)
-	cd $(PD) && ./$(RESULTS_DIR)/$(PD_EXE) --folder ../$(HARD_INPUT) | tee $(RESULTS_DIR)/$(PD_OUT_HARD)
+	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) --folder ../../$(HARD_INPUT) | tee ./$(PD_OUT_HARD)
 
 profile-parallel-data: build-parallel-data
 	rm -f $(PD)/$(RESULTS_DIR)/$(PROFILER_FILE) $(PD)/$(RESULTS_DIR)/$(PROFILER_PDF)
 	cd $(PD)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(PD_EXE) --file ../../$(PROFILER_INPUT)
 	cd $(PD)/$(RESULTS_DIR) && pprof -pdf ./$(PD_EXE) $(PROFILER_FILE) > $(PROFILER_PDF)
+########################################################################################################################
+# MPI compile
+MPI_CXX := mpic++
+MPI_CXX_FLAGS := -pedantic -Wall -Wextra -lmpi -O3 -std=c++17
+# MPI run
+MPI_RUN := mpirun
+MPI_RUN_FLAGS := -n 2
+# MPI Settings
+MPI := mpi
+MPI_SRC := $(MPI).cpp
+MPI_EXE := $(MPI).exe
+MPI_OUT_EASY := $(MPI)_easy.out.txt
+MPI_OUT_MEDIUM := $(MPI)_medium.out.txt
+MPI_OUT_HARD := $(MPI)_hard.out.txt
+# MPI targets
+clean-mpi:
+	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_EXE)
+	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_EASY) ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_MEDIUM) ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_HARD)
+	rm -f ./$(MPI)/$(RESULTS_DIR)/$(PROFILER_FILE) ./$(MPI)/$(RESULTS_DIR)/$(PROFILER_MPIF)
+
+build-mpi:
+	cd $(MPI) && $(MPI_CXX) $(MPI_CXX_FLAGS) $(MPI_SRC) -o $(RESULTS_DIR)/$(MPI_EXE)
+
+run-mpi-easy: build-mpi
+	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_EASY)
+	cd $(MPI)/$(RESULTS_DIR) && $(MPI_RUN) $(MPI_RUN_FLAGS) $(MPI_EXE) --folder ../../$(EASY_INPUT) | tee ./$(MPI_OUT_EASY)
+
+run-mpi-medium: build-mpi
+	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_MEDIUM)
+	cd $(MPI)/$(RESULTS_DIR) && $(MPI_RUN) $(MPI_RUN_FLAGS) $(MPI_EXE) --folder ../../$(MEDIUM_INPUT) | tee ./$(MPI_OUT_MEDIUM)
+
+run-mpi-hard: build-mpi
+	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_HARD)
+	cd $(MPI)/$(RESULTS_DIR) && $(MPI_RUN) $(MPI_RUN_FLAGS) $(MPI_EXE) --folder ../../$(HARD_INPUT) | tee ./$(MPI_OUT_HARD)
 ########################################################################################################################

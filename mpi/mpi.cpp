@@ -4,66 +4,76 @@
  * 2023
  */
 #include <iostream>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+#include <algorithm>
 #include <utility>
 #include <vector>
-#include <string>
-#include <filesystem>
-#include <chrono>
-#include <algorithm>
-#include <fstream>
 #include <unordered_map>
 #include <queue>
-#include <cstdint>
-#include <cstring>
-#include <thread>
-#include <omp.h>
-
+#include <chrono>
+#include <mpi.h>
+//----------------------------------------------------------------------------------------------------------------------
 #define MAX_VERTICES 150
-#define MAX_EDGES 11175 // 150 choose 2
+#define MAX_EDGES 11175 // (150 choose 2)
 #define MAX_WEIGHT 120
 #define MIN_WEIGHT 80
-
-
+// MPI Main process id
+#define MPI_MAIN 0
+// MPI Tags
+#define TAG_GRAPH 1
+#define TAG_STATE 2
+#define TAG_BEST 3
+//----------------------------------------------------------------------------------------------------------------------
 using namespace std;
 namespace fs = std::filesystem;
 using time_point = chrono::high_resolution_clock::time_point;
-
-enum color_t : uint8_t {NO_COLOR, RED, BLUE};
-
+//----------------------------------------------------------------------------------------------------------------------
+enum color_t : uint8_t {NO_COLOR = 0, RED = 1, BLUE = 2};
+class Format;
+class MyMpi; // MPI Sending and receive
 class Edge;
+class Graph;
 class SolutionState;
-class ProblemInstance;
+class ProblemInstance; // MPI Main
+class Worker;          // MPI Worker
 class InputHandler;
-
-string prettyPrintElapsedTime(time_point start_time, time_point end_time) {
-    auto ms = chrono::duration_cast<chrono::milliseconds>(end_time - start_time);
-    auto h = chrono::duration_cast<chrono::hours>(ms);
-    ms -= chrono::duration_cast<chrono::milliseconds>(h);
-    auto m = chrono::duration_cast<chrono::minutes>(ms);
-    ms -= chrono::duration_cast<chrono::milliseconds>(m);
-    auto s = chrono::duration_cast<chrono::seconds>(ms);
-    ms -= chrono::duration_cast<chrono::milliseconds>(s);
-    ostringstream oss;
-    oss << h.count() << "h:" << m.count() << "m:" << s.count() << "." << ms.count() << "s";
-    return oss.str();
-}
-
-string formatWithCommas(uint64_t number) {
-    string str = to_string(number);
-    int n = str.length();
-    if (n <= 3)
-        return str;
-    string formatted;
-    int count = 0;
-    for (int i = n - 1; i >= 0; i--) {
-        formatted.insert(0, 1, str[i]);
-        count++;
-        if (count % 3 == 0 && i != 0)
-            formatted.insert(0, 1, ',');
+//----------------------------------------------------------------------------------------------------------------------
+class Format {
+public:
+    static string elapsedTime(time_point start_time, time_point end_time) {
+        auto ms = chrono::duration_cast<chrono::milliseconds>(end_time - start_time);
+        auto h = chrono::duration_cast<chrono::hours>(ms);
+        ms -= chrono::duration_cast<chrono::milliseconds>(h);
+        auto m = chrono::duration_cast<chrono::minutes>(ms);
+        ms -= chrono::duration_cast<chrono::milliseconds>(m);
+        auto s = chrono::duration_cast<chrono::seconds>(ms);
+        ms -= chrono::duration_cast<chrono::milliseconds>(s);
+        ostringstream oss;
+        oss << h.count() << "h:" << m.count() << "m:" << s.count() << "." << ms.count() << "s";
+        return oss.str();
     }
-    return formatted;
-}
+};
+//----------------------------------------------------------------------------------------------------------------------
+class MyMpi {
+public:
+    static void sendString (const int & dest, const int & tag, const string & message) {
+        MPI_Send(message.data(), int(message.size()), MPI_CHAR, dest, tag, MPI_COMM_WORLD);
+    }
 
+    static MPI_Status recvString(const int & source, const int & tag, string & buffer) {
+        MPI_Status status;
+        MPI_Probe(source, tag, MPI_COMM_WORLD, &status);
+        int message_size;
+        MPI_Get_count(&status, MPI_CHAR, &message_size);
+        buffer.resize(message_size);
+        MPI_Recv(&buffer[0], message_size, MPI_CHAR, source, tag, MPI_COMM_WORLD, &status);
+        return status;
+    }
+};
+//----------------------------------------------------------------------------------------------------------------------
 class Edge {
 public:
     uint8_t u; // < 150
@@ -92,24 +102,77 @@ public:
         return false;
     }
 
-    friend ostream & operator << (ostream & os, const Edge & edge) {
-        os << "{(" << int(edge.u) << ", " << int(edge.v) << "), " << int(edge.weight) << "}";
-        return os;
+    [[nodiscard]] string printEdge() const {
+        ostringstream oss;
+        oss << "{(" << int(u) << ", " << int(v) << "), " << int(weight) << "}";
+        return oss.str();
     }
 };
+//----------------------------------------------------------------------------------------------------------------------
+class Graph {
+public:
+    Edge edges[MAX_EDGES];
+    uint16_t edges_size = 0; // < 11175 = (150 choose 2)
+public:
+    string toString() {
+        ostringstream oss;
+        for (auto & edge : edges)
+            oss << int(edge.u) << " " << int(edge.v) << " " << int(edge.weight) << " ";
+        oss << int(edges_size);
+        return oss.str();
+    }
 
+    void fromString(const string& input) {
+        int u, v, w, size;
+        istringstream iss(input);
+        for (auto & edge : edges){
+            iss >> u;   edge.v = v;
+            iss >> v;   edge.u = u;
+            iss >> w;   edge.weight = w;
+        }
+        iss >> size;    edges_size = size;
+    }
+};
+//----------------------------------------------------------------------------------------------------------------------
 class SolutionState {
 public:
     color_t colors[MAX_VERTICES] = {NO_COLOR};
-    uint8_t num_of_vertices = 0; // < 150
-    uint16_t edge_index = 0; // < 11175 = (150 choose 2)
-    uint16_t used_edges = 0; // < 11175 = (150 choose 2)
-    uint32_t cost = 0; // < 1341000 = 11175 * 120
-    uint32_t sum_cost_all = 0; // < 1341000 = 11175 * 120
-    Edge * edges = nullptr;
-    uint16_t edges_size = 0; // < 11175 = (150 choose 2)
-    uint32_t edges_total_weight = 0; // < 1341000 = 11175 * 120
+    uint8_t num_of_vertices = 0;        // < 150
+    uint16_t edge_index = 0;            // < 11175 = (150 choose 2)
+    uint16_t used_edges = 0;            // < 11175 = (150 choose 2)
+    uint32_t cost = 0;                  // < 1341000 = 11175 * 120
+    uint32_t sum_cost_all = 0;          // < 1341000 = 11175 * 120
+    uint32_t edges_total_weight = 0;    // < 1341000 = 11175 * 120
+    Graph * graph = nullptr;
 public:
+    string toString() {
+        ostringstream oss;
+        for (auto & color : colors)
+            oss << int(color) << " ";
+        oss << int(num_of_vertices) << " ";
+        oss << int(edge_index) << " ";
+        oss << int(used_edges) << " ";
+        oss << int(cost) << " ";
+        oss << int(sum_cost_all) << " ";
+        oss << int(edges_total_weight);
+        return oss.str();
+    }
+
+    void fromString(const string& input, Graph * graph_ptr) {
+        int int_color, int_num_of_vertices, int_edge_index, int_used_edges, int_cost, int_sum_cost_all, int_edges_total_weight;
+        istringstream iss(input);
+        for (auto & color : colors) {
+            iss >> int_color; color = static_cast<color_t>(int_color);
+        }
+        iss >> int_num_of_vertices;     num_of_vertices = int_num_of_vertices;
+        iss >> int_edge_index;          edge_index = int_edge_index;
+        iss >> int_used_edges;          used_edges = int_used_edges;
+        iss >> int_cost;                cost = int_cost;
+        iss >> int_sum_cost_all;        sum_cost_all = int_sum_cost_all;
+        iss >> int_edges_total_weight;  edges_total_weight = int_edges_total_weight;
+        graph = graph_ptr;
+    }
+
     void resetSolution() {
         memset(colors, NO_COLOR, sizeof(colors));
         edge_index = 0;
@@ -117,19 +180,19 @@ public:
         cost = 0;
     }
 
-    bool isLeaf() const {
-        return edge_index == edges_size;
+    [[nodiscard]] bool isLeaf() const {
+        return edge_index == graph->edges_size;
     }
 
-    bool isBetterThan(SolutionState state) const {
+    [[nodiscard]] bool isBetterThan(SolutionState state) const {
         return cost > state.cost;
     }
 
     bool isBipartite() {
         unordered_map<int, vector<int>> adj_map;
-        for (int i = 0; i < edges_size; i++) {
-            adj_map[int(edges[i].u)].push_back(int(edges[i].v));
-            adj_map[int(edges[i].v)].push_back(int(edges[i].u));
+        for (int i = 0; i < graph->edges_size; i++) {
+            adj_map[int(graph->edges[i].u)].push_back(int(graph->edges[i].v));
+            adj_map[int(graph->edges[i].v)].push_back(int(graph->edges[i].u));
         }
         queue<pair<int, color_t>> q;
         for (auto & [vertex, _] : adj_map){
@@ -165,11 +228,11 @@ public:
     bool isConnected() {
         uint8_t adj_map[MAX_VERTICES][MAX_VERTICES] = {{0}};
         uint8_t adj_map_sizes[MAX_VERTICES] = {0};
-        for (int i = 0; i < edges_size; i++) {
-            adj_map[edges[i].u][adj_map_sizes[edges[i].u]] = edges[i].v;
-            adj_map_sizes[edges[i].u]++;
-            adj_map[edges[i].v][adj_map_sizes[edges[i].v]] = edges[i].u;
-            adj_map_sizes[edges[i].v]++;
+        for (int i = 0; i < graph->edges_size; i++) {
+            adj_map[graph->edges[i].u][adj_map_sizes[graph->edges[i].u]] = graph->edges[i].v;
+            adj_map_sizes[graph->edges[i].u]++;
+            adj_map[graph->edges[i].v][adj_map_sizes[graph->edges[i].v]] = graph->edges[i].u;
+            adj_map_sizes[graph->edges[i].v]++;
         }
         bool visited[MAX_VERTICES] = {false};
         isConnectedDFS(adj_map, adj_map_sizes, 0, visited);
@@ -179,16 +242,16 @@ public:
         return true;
     }
 
-    uint32_t sumWeightRemainingEdges() const {
+    [[nodiscard]] uint32_t sumWeightRemainingEdges() const {
         return edges_total_weight - sum_cost_all;
     }
 
-    int numOfUsedEdges() const {
+    [[nodiscard]] int numOfUsedEdges() const {
         return int(used_edges);
     }
 
-    int numOfRemainingEdges() const {
-        return edges_size - edge_index;
+    [[nodiscard]] int numOfRemainingEdges() const {
+        return graph->edges_size - edge_index;
     }
 
     static color_t getOppositeColor(color_t c) {
@@ -196,26 +259,26 @@ public:
     }
 
     void skipEdge() {
-        sum_cost_all += edges[edge_index].weight;
+        sum_cost_all += graph->edges[edge_index].weight;
         edge_index++;
     }
 
     void addEdge() {
-        sum_cost_all += edges[edge_index].weight;
-        cost += edges[edge_index].weight;
+        sum_cost_all += graph->edges[edge_index].weight;
+        cost += graph->edges[edge_index].weight;
         edge_index++;
         used_edges++;
     }
 };
-
+//----------------------------------------------------------------------------------------------------------------------
 class ProblemInstance {
 private:
-    Edge edges[MAX_EDGES];
-    uint16_t edges_size;
+    Graph graph;
     SolutionState initial_state;
     SolutionState best_state;
-    // Data parallelism
+    // MPI parallelism
     vector<SolutionState> solution_states_queue;
+    int world_size;
     // Metrics
     string input_name;
     time_point start_time;
@@ -246,23 +309,23 @@ private:
         cout << "}" << endl;
         cout << "--------------------------------------------" << endl;
         vector<Edge> used_edges;
-        for (int i = 0; i < edges_size; i++)
-            if (best_state.colors[edges[i].u] != best_state.colors[edges[i].v])
-                used_edges.push_back(edges[i]);
+        for (int i = 0; i < graph.edges_size; i++)
+            if (best_state.colors[graph.edges[i].u] != best_state.colors[graph.edges[i].v])
+                used_edges.push_back(graph.edges[i]);
         cout << "EDGES: ";
         for (auto i = used_edges.begin(); i != used_edges.end(); i++) {
-            cout << *i;
+            cout << i->printEdge();
             if (i+1 != used_edges.end()) cout << ", ";
         }
         cout << endl;
         cout << "--------------------------------------------" << endl;
         cout << "Weights sum = " << best_state.cost << endl;
         cout << "--------------------------------------------" << endl;
-        cout << "Took: " << prettyPrintElapsedTime(start_time, end_time) << endl;
+        cout << "Took: " << Format::elapsedTime(start_time, end_time) << endl;
         cout << "============================================" << endl;
     }
 
-    bool noBetterSolutionPossible(SolutionState state) const {
+    [[nodiscard]] bool noBetterSolutionPossible(SolutionState state) const {
         if (state.cost + state.sumWeightRemainingEdges() < best_state.cost)
             return true;
         if (state.numOfUsedEdges() + state.numOfRemainingEdges() < int(state.num_of_vertices - 1))
@@ -271,7 +334,7 @@ private:
     }
 
     size_t solutionQueueLimit() {
-        return size_t(thread::hardware_concurrency() * 2);
+        return world_size * 2;
     }
 
     void generateStatesQueue() {
@@ -296,8 +359,8 @@ private:
         if (noBetterSolutionPossible(state))
             return;
         // Color the graph to keep bipartity.
-        int u = edges[state.edge_index].u;
-        int v = edges[state.edge_index].v;
+        int u = graph.edges[state.edge_index].u;
+        int v = graph.edges[state.edge_index].v;
         if ((state.colors[u] == RED and state.colors[v] == RED) or
             (state.colors[u] == BLUE and state.colors[v] == BLUE)){
             {
@@ -371,12 +434,101 @@ private:
             }
         }
     }
+public:
+    ProblemInstance(string input_name, int num_of_vertices, vector<Edge> edges) {
+        for (graph.edges_size = 0; graph.edges_size < min(sizeof(this->graph.edges), edges.size()); graph.edges_size++) {
+            this->graph.edges[graph.edges_size] = edges[graph.edges_size];
+            this->initial_state.edges_total_weight += edges[graph.edges_size].weight;
+        }
+        sort(this->graph.edges, this->graph.edges + graph.edges_size, greater<>());
+        initial_state.num_of_vertices = num_of_vertices;
+        best_state = this->initial_state;
+        world_size = 0;
+        this->input_name = std::move(input_name);
+    }
+
+    string getInputName() {
+        return input_name;
+    }
+
+    [[nodiscard]] uint32_t getBestStateCost() const {
+        return best_state.cost;
+    }
+
+    void findMaxConnectedBipartiteSubgraph() {
+        start_time = chrono::high_resolution_clock::now();
+        initial_state.graph = &this->graph;
+        if (initial_state.isBipartite() and initial_state.isConnected()) {
+            best_state = initial_state;
+        } else {
+            initial_state.resetSolution();
+            MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+            generateStatesQueue();
+            // Send graph to all workers
+            for (int i = 1; i < world_size; i++) {
+                MyMpi::sendString(i, TAG_GRAPH, graph.toString());
+                cout << "[MPI] M0 --> W" << i << ": graph" << endl;
+            }
+            // Send work
+            int running_workers = 1;
+            while (!solution_states_queue.empty()) {
+                if (running_workers < world_size) {
+                    MyMpi::sendString(running_workers, TAG_STATE, solution_states_queue.front().toString());
+                    solution_states_queue.erase(solution_states_queue.begin());
+                    cout << "[MPI] M0 --> W" << running_workers << ": state" << endl;
+                    running_workers++;
+                } else {
+                    SolutionState potential_new_best;
+                    string potential_new_best_str;
+                    MPI_Status status = MyMpi::recvString(MPI_ANY_SOURCE, TAG_BEST, potential_new_best_str);
+                    potential_new_best.fromString(potential_new_best_str, &graph);
+                    cout << "[MPI] M0 <-- W" << running_workers << ": pot best: " << potential_new_best.cost << endl;
+                    if (potential_new_best.isBetterThan(best_state)) {
+                        best_state = potential_new_best;
+                    } else {
+                        MyMpi::sendString(status.MPI_SOURCE, TAG_STATE, best_state.toString());
+                        cout << "[MPI] M0 <-- W" << running_workers << ": new best: " << best_state.cost << endl;
+                    }
+                    MyMpi::sendString(status.MPI_SOURCE, TAG_STATE, solution_states_queue.front().toString());
+                    solution_states_queue.erase(solution_states_queue.begin());
+                }
+            }
+            while (running_workers > 1) {
+                SolutionState potential_new_best;
+                string potential_new_best_str;
+                MPI_Status status;
+                status = MyMpi::recvString(MPI_ANY_SOURCE, TAG_BEST, potential_new_best_str);
+                potential_new_best.fromString(potential_new_best_str, &graph);
+                if (potential_new_best.isBetterThan(best_state))
+                    best_state = potential_new_best;
+                MyMpi::sendString(status.MPI_SOURCE, TAG_STATE, initial_state.toString());
+                running_workers--;
+            }
+        }
+        printResult();
+    }
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+class Worker {
+private:
+    Graph graph;
+    SolutionState initial_state;
+    SolutionState best_state;
+private:
+    [[nodiscard]] bool noBetterSolutionPossible(SolutionState state) const {
+        if (state.cost + state.sumWeightRemainingEdges() < best_state.cost)
+            return true;
+        if (state.numOfUsedEdges() + state.numOfRemainingEdges() < int(state.num_of_vertices - 1))
+            return true;
+        return false;
+    }
 
     void findBestStateDFS(SolutionState state) {
         // Check if better solution found
         if (state.isLeaf()) {
             if (state.isConnected() and state.isBetterThan(best_state)) {
-                #pragma omp critical
+                //#pragma omp critical
                 {
                     if(state.isBetterThan(best_state))
                         best_state = state;
@@ -390,8 +542,8 @@ private:
         if (noBetterSolutionPossible(state))
             return;
         // Color the graph to keep bipartity.
-        int u = edges[state.edge_index].u;
-        int v = edges[state.edge_index].v;
+        int u = graph.edges[state.edge_index].u;
+        int v = graph.edges[state.edge_index].v;
         if ((state.colors[u] == RED and state.colors[v] == RED) or
             (state.colors[u] == BLUE and state.colors[v] == BLUE)){
             {
@@ -466,44 +618,33 @@ private:
         }
     }
 public:
-    ProblemInstance(string input_name, int num_of_vertices, vector<Edge> edges) {
-        for (edges_size = 0; edges_size < min(sizeof(this->edges), edges.size()); edges_size++) {
-            this->edges[edges_size] = edges[edges_size];
-            this->initial_state.edges_total_weight += edges[edges_size].weight;
-        }
-        sort(this->edges, this->edges + edges_size, greater<>());
-        initial_state.num_of_vertices = num_of_vertices;
-        initial_state.edges_size = edges_size;
-        best_state = this->initial_state;
-
-        this->input_name = std::move(input_name);
-    }
-
-    string getInputName() {
-        return input_name;
-    }
-
-    uint32_t getBestStateCost() const {
-        return best_state.cost;
-    }
-
-    void findMaxConnectedBipartiteSubgraph() {
-        start_time = chrono::high_resolution_clock::now();
-        initial_state.edges = this->edges;
-        if (initial_state.isBipartite() and initial_state.isConnected()) {
-            best_state = initial_state;
-        } else {
-            initial_state.resetSolution();
-            generateStatesQueue();
-            #pragma omp parallel for
-            for (auto & solution_state : solution_states_queue) {
-                findBestStateDFS(solution_state);
+    void workerMain(int rank){
+        // Receive graph
+        string graph_str;
+        MyMpi::recvString(MPI_MAIN, TAG_GRAPH, graph_str);
+        cout << "[MPI] W" << rank << " <-- M0: graph" << endl;
+        graph.fromString(graph_str);
+        // Receive work
+        while (true) {
+            string initial_state_str;
+            MyMpi::recvString(MPI_MAIN, TAG_STATE, initial_state_str);
+            cout << "[MPI] W" << rank << " <-- M0: state" << endl;
+            initial_state.fromString(initial_state_str, &graph);
+            if (all_of(initial_state.colors, initial_state.colors + MAX_VERTICES, [](color_t c){return c == NO_COLOR;})) {
+                cout << "[MPI] W" << rank << " <-- M0: end" << endl;
+                break;
+            } else if (initial_state.isLeaf() and initial_state.isBetterThan(best_state)) {
+                best_state = initial_state;
+                cout << "[MPI] W" << rank << " <-- M0: new best: " << best_state.cost << endl;
+            } else {
+                findBestStateDFS(initial_state);
+                MyMpi::sendString(MPI_MAIN, TAG_BEST, best_state.toString());
+                cout << "[MPI] W" << rank << " --> M0: pot best: " << best_state.cost << endl;
             }
         }
-        printResult();
     }
 };
-
+//----------------------------------------------------------------------------------------------------------------------
 class InputHandler {
 public:
     static void printHelp() {
@@ -603,69 +744,85 @@ public:
         return inputs;
     }
 };
-
+//----------------------------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
-    // Read input
-    vector<ProblemInstance> inputs = InputHandler::readInput(argc, argv);
-    // Measure time
-    auto start_time_total = chrono::high_resolution_clock::now();
-    // Find solutions
-    for (auto & problem_instance : inputs)
-        problem_instance.findMaxConnectedBipartiteSubgraph();
-    // End of time measure
-    auto end_time_total = chrono::high_resolution_clock::now();
-    // Print total time if more than one result
-    if (inputs.size() > 1) {
-        cout << "============================================" << endl;
-        cout << "Total time: " << prettyPrintElapsedTime(start_time_total, end_time_total) << endl;
-        cout << "============================================" << endl;
-    }
-    // Assert
-    unordered_map<string, uint32_t> results = {
-        // Easy
-        {"graf_10_3.txt", 1300},
-        {"graf_10_5.txt", 1885},
-        {"graf_10_6.txt", 2000},
-        {"graf_10_7.txt", 2348},
-        {"graf_12_3.txt", 1422},
-        {"graf_12_5.txt", 2219},
-        {"graf_12_6.txt", 2533},
-        {"graf_12_9.txt", 3437},
-        {"graf_13_9.txt", 3700},
-        {"graf_13_12.txt", 4182},
-        {"graf_15_4.txt", 2547},
-        {"graf_15_5.txt", 2892},
-        {"graf_15_6.txt", 3353},
-        {"graf_15_8.txt", 3984},
-        {"graf_15_12.txt", 5380},
-        {"graf_15_14.txt", 5578},
-        {"graf_17_10.txt", 5415},
-        // Medium
-        {"graf_20_16.txt", 9353},
-        {"graf_20_17.txt", 9768},
-        {"graf_20_19.txt", 10288},
-        {"graf_21_15.txt", 9570},
-        {"graf_22_17.txt", 11015},
-        {"graf_23_20.txt", 12902},
-        {"graf_24_23.txt", 14844},
-        // Hard
-        {"graf_25_16.txt", 12105},
-        {"graf_25_22.txt", 15594},
-        {"graf_26_25.txt", 17477},
-        {"graf_27_19.txt", 15470},
-        {"graf_28_24.txt", 18729},
-        {"graf_29_26.txt", 20810},
-        {"graf_30_25.txt", 21336}
-    };
-    // Print if wrong result
-    for (auto problem_instance : inputs) {
-        string name = fs::path(problem_instance.getInputName()).filename();
-        if (results.count(name) > 0) {
-            uint32_t expected = results[name];
-            uint32_t got = problem_instance.getBestStateCost();
-            if (got != expected)
-                cout << problem_instance.getInputName() << " expected: " << expected << " got: " << got << endl;
+    MPI_Init(&argc, &argv);
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    // Main process
+    if (rank == MPI_MAIN) {
+        cout << "[MPI] M" << rank << ": start" << endl;
+        // Read input
+        vector<ProblemInstance> inputs = InputHandler::readInput(argc, argv);
+        // Measure time
+        auto start_time_total = chrono::high_resolution_clock::now();
+        // Find solutions
+        for (auto & problem_instance : inputs)
+            problem_instance.findMaxConnectedBipartiteSubgraph();
+        // End of time measure
+        auto end_time_total = chrono::high_resolution_clock::now();
+        // Print total time if more than one result
+        if (inputs.size() > 1) {
+            cout << "============================================" << endl;
+            cout << "Total time: " << Format::elapsedTime(start_time_total, end_time_total) << endl;
+            cout << "============================================" << endl;
         }
+        // Assert
+        unordered_map<string, uint32_t> results = {
+                // Easy
+                {"graf_10_3.txt", 1300},
+                {"graf_10_5.txt", 1885},
+                {"graf_10_6.txt", 2000},
+                {"graf_10_7.txt", 2348},
+                {"graf_12_3.txt", 1422},
+                {"graf_12_5.txt", 2219},
+                {"graf_12_6.txt", 2533},
+                {"graf_12_9.txt", 3437},
+                {"graf_13_9.txt", 3700},
+                {"graf_13_12.txt", 4182},
+                {"graf_15_4.txt", 2547},
+                {"graf_15_5.txt", 2892},
+                {"graf_15_6.txt", 3353},
+                {"graf_15_8.txt", 3984},
+                {"graf_15_12.txt", 5380},
+                {"graf_15_14.txt", 5578},
+                {"graf_17_10.txt", 5415},
+                // Medium
+                {"graf_20_16.txt", 9353},
+                {"graf_20_17.txt", 9768},
+                {"graf_20_19.txt", 10288},
+                {"graf_21_15.txt", 9570},
+                {"graf_22_17.txt", 11015},
+                {"graf_23_20.txt", 12902},
+                {"graf_24_23.txt", 14844},
+                // Hard
+                {"graf_25_16.txt", 12105},
+                {"graf_25_22.txt", 15594},
+                {"graf_26_25.txt", 17477},
+                {"graf_27_19.txt", 15470},
+                {"graf_28_24.txt", 18729},
+                {"graf_29_26.txt", 20810},
+                {"graf_30_25.txt", 21336}
+        };
+        // Print if wrong result
+        for (auto problem_instance : inputs) {
+            string name = fs::path(problem_instance.getInputName()).filename();
+            if (results.count(name) > 0) {
+                uint32_t expected = results[name];
+                uint32_t got = problem_instance.getBestStateCost();
+                if (got != expected)
+                    cout << problem_instance.getInputName() << " expected: " << expected << " got: " << got << endl;
+            }
+        }
+        cout << "[MPI] M" << rank << ": end" << endl;
     }
+    // Worker process
+    if (rank != MPI_MAIN) {
+        cout << "[MPI] W" << rank << ": start" << endl;
+        Worker worker;
+        worker.workerMain(rank);
+        cout << "[MPI] W" << rank << ": end" << endl;
+    }
+    MPI_Finalize();
     return 0;
 }
