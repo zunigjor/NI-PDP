@@ -23,6 +23,8 @@
 #define MAX_WEIGHT 120
 #define MIN_WEIGHT 80
 
+// Default number of threads
+int number_of_threads = 1;
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -495,7 +497,7 @@ public:
         } else {
             initial_state.resetSolution();
             generateStatesQueue();
-            #pragma omp parallel for
+            #pragma omp parallel for num_threads(number_of_threads)
             for (auto & solution_state : solution_states_queue) {
                 findBestStateDFS(solution_state);
             }
@@ -576,11 +578,22 @@ public:
         bool file_arg_found = file_arg_it != args.end();
         auto folder_arg_it = find(args.begin(), args.end(), "--folder");
         bool folder_arg_found = folder_arg_it != args.end();
-        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found or folder_arg_found);
+        auto thread_num_arg_it = find(args.begin(), args.end(), "-t");
+        bool thread_num_arg_found = thread_num_arg_it != args.end();
+        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found or folder_arg_found or thread_num_arg_found);
         // If -h, --help or none of the accepted flags found. Print out the help message.
         if (help_arg_found_short or help_arg_found_long or !any_found) {
             InputHandler::printHelp();
             return inputs;
+        }
+        // If -t <int> is found, set the number of threads variable
+        if (thread_num_arg_found) {
+            auto num_of_threads_it = next(thread_num_arg_it);
+            if (num_of_threads_it != args.end()) {
+                istringstream iss(*num_of_threads_it);
+                iss >> number_of_threads;
+            }
+            cout << "Number of threads: " << number_of_threads << endl;
         }
         // If --file <filepath>... is present, extract from files
         if (file_arg_found) {

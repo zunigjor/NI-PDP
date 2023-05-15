@@ -5,6 +5,7 @@
  */
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -20,6 +21,8 @@
 #define MAX_EDGES 11175 // (150 choose 2)
 #define MAX_WEIGHT 120
 #define MIN_WEIGHT 80
+// OpenMP number of threads
+int number_of_threads = 1;
 // MPI Main process id
 #define MPI_MAIN 0
 // MPI Tags
@@ -556,7 +559,10 @@ private:
             {
                 SolutionState opt_skip = state;
                 opt_skip.skipEdge();
-                findBestStateDFS(opt_skip);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_skip);
+                }
             }
         } else if (state.colors[u] == NO_COLOR and state.colors[v] == NO_COLOR) {
             {
@@ -564,28 +570,40 @@ private:
                 opt_add_red_blue.addEdge();
                 opt_add_red_blue.colors[u] = RED;
                 opt_add_red_blue.colors[v] = BLUE;
-                findBestStateDFS(opt_add_red_blue);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_add_red_blue);
+                }
             }
             {
                 SolutionState opt_add_blue_red = state;
                 opt_add_blue_red.addEdge();
                 opt_add_blue_red.colors[u] = BLUE;
                 opt_add_blue_red.colors[v] = RED;
-                findBestStateDFS(opt_add_blue_red);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_add_blue_red);
+                }
             }
             {
                 SolutionState opt_skip_red_red = state;
                 opt_skip_red_red.skipEdge();
                 opt_skip_red_red.colors[u] = RED;
                 opt_skip_red_red.colors[v] = RED;
-                findBestStateDFS(opt_skip_red_red);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_skip_red_red);
+                }
             }
             {
                 SolutionState opt_skip_blue_blue = state;
                 opt_skip_blue_blue.skipEdge();
                 opt_skip_blue_blue.colors[u] = BLUE;
                 opt_skip_blue_blue.colors[v] = BLUE;
-                findBestStateDFS(opt_skip_blue_blue);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_skip_blue_blue);
+                }
             }
         } else if ((state.colors[u] == RED and state.colors[v] == NO_COLOR) or
                    (state.colors[u] == BLUE and state.colors[v] == NO_COLOR)) {
@@ -593,13 +611,19 @@ private:
                 SolutionState opt_add_opposite = state;
                 opt_add_opposite.addEdge();
                 opt_add_opposite.colors[v] = SolutionState::getOppositeColor(opt_add_opposite.colors[u]);
-                findBestStateDFS(opt_add_opposite);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_add_opposite);
+                }
             }
             {
                 SolutionState opt_skip_same = state;
                 opt_skip_same.skipEdge();
                 opt_skip_same.colors[v] = opt_skip_same.colors[u];
-                findBestStateDFS(opt_skip_same);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_skip_same);
+                }
             }
         } else if ((state.colors[u] == NO_COLOR and state.colors[v] == RED) or
                    (state.colors[u] == NO_COLOR and state.colors[v] == BLUE)) {
@@ -607,20 +631,29 @@ private:
                 SolutionState opt_add_opposite = state;
                 opt_add_opposite.addEdge();
                 opt_add_opposite.colors[u] = SolutionState::getOppositeColor(opt_add_opposite.colors[v]);
-                findBestStateDFS(opt_add_opposite);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_add_opposite);
+                }
             }
             {
                 SolutionState opt_skip_same = state;
                 opt_skip_same.skipEdge();
                 opt_skip_same.colors[u] = opt_skip_same.colors[v];
-                findBestStateDFS(opt_skip_same);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_skip_same);
+                }
             }
         } else if ((state.colors[u] == RED and state.colors[v] == BLUE) or
                    (state.colors[u] == BLUE and state.colors[v] == RED)) {
             {
                 SolutionState opt_add = state;
                 opt_add.addEdge();
-                findBestStateDFS(opt_add);
+                #pragma omp task
+                {
+                    findBestStateDFS(opt_add);
+                }
             }
         }
     }
@@ -640,7 +673,9 @@ public:
             } else if (initial_state.isLeaf() and initial_state.isBetterThan(best_state)) {
                 best_state = initial_state;
             } else {
-                findBestStateDFS(initial_state);
+                #pragma omp parallel num_threads(number_of_threads)
+                    #pragma omp single
+                        findBestStateDFS(initial_state);
                 MyMpi::sendString(MPI_MAIN, TAG_BEST, best_state.toString());
             }
         }
@@ -698,11 +733,22 @@ public:
         bool help_arg_found_long = find(args.begin(), args.end(), "--help") != args.end();
         auto file_arg_it = find(args.begin(), args.end(), "--file");
         bool file_arg_found = file_arg_it != args.end();
-        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found);
+        auto thread_num_arg_it = find(args.begin(), args.end(), "-t");
+        bool thread_num_arg_found = thread_num_arg_it != args.end();
+        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found or thread_num_arg_found);
         // If -h, --help or none of the accepted flags found. Print out the help message.
         if (help_arg_found_short or help_arg_found_long or !any_found) {
             InputHandler::printHelp();
             return inputs;
+        }
+        // If -t <int> is found, set the number of threads variable
+        if (thread_num_arg_found) {
+            auto num_of_threads_it = next(thread_num_arg_it);
+            if (num_of_threads_it != args.end()) {
+                istringstream iss(*num_of_threads_it);
+                iss >> number_of_threads;
+            }
+            cout << "Number of threads: " << number_of_threads << endl;
         }
         // If --file <filepath>... is present, extract from files
         if (file_arg_found) {

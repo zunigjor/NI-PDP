@@ -54,6 +54,7 @@ profile-sequential: build-sequential
 # Parallel task settings
 PT_CXX_FLAGS := -pedantic -Wall -Wextra -fopenmp -O3 -std=c++17
 PT := parallel_task
+PT_NUM_OF_THREADS = 4
 PT_SRC := $(PT).cpp
 PT_EXE := $(PT).exe
 PT_OUT_EASY := $(PT)_easy.out.txt
@@ -71,24 +72,25 @@ build-parallel-task:
 
 run-parallel-task-easy: build-parallel-task
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_EASY)
-	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) --folder ../../$(EASY_INPUT) | tee ./$(PT_OUT_EASY)
+	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) -t $(PT_NUM_OF_THREADS) --folder ../../$(EASY_INPUT) | tee ./$(PT_OUT_EASY)
 
 run-parallel-task-medium: build-parallel-task
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_MEDIUM)
-	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) --folder ../../$(MEDIUM_INPUT) | tee ./$(PT_OUT_MEDIUM)
+	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) -t $(PT_NUM_OF_THREADS) --folder ../../$(MEDIUM_INPUT) | tee ./$(PT_OUT_MEDIUM)
 
 run-parallel-task-hard: build-parallel-task
 	rm -f ./$(PT)/$(RESULTS_DIR)/$(PT_OUT_HARD)
-	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) --folder ../../$(HARD_INPUT) | tee ./$(PT_OUT_HARD)
+	cd $(PT)/$(RESULTS_DIR) && ./$(PT_EXE) -t $(PT_NUM_OF_THREADS) --folder ../../$(HARD_INPUT) | tee ./$(PT_OUT_HARD)
 
 profile-parallel-task: build-parallel-task
 	rm -f $(PT)/$(RESULTS_DIR)/$(PROFILER_FILE) $(PT)/$(RESULTS_DIR)/$(PROFILER_PDF)
-	cd $(PT)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(PT_EXE) --file ../../$(PROFILER_INPUT)
+	cd $(PT)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(PT_EXE) -t $(PT_NUM_OF_THREADS) --file ../../$(PROFILER_INPUT)
 	cd $(PT)/$(RESULTS_DIR) && pprof -pdf ./$(PT_EXE) $(PROFILER_FILE) > $(PROFILER_PDF)
 ########################################################################################################################
 # Parallel data settings
 PD_CXX_FLAGS := -pedantic -Wall -Wextra -fopenmp -O3 -std=c++17
 PD := parallel_data
+PD_NUM_OF_THREADS = 4
 PD_SRC := $(PD).cpp
 PD_EXE := $(PD).exe
 PD_OUT_EASY := $(PD)_easy.out.txt
@@ -106,24 +108,24 @@ build-parallel-data:
 
 run-parallel-data-easy: build-parallel-data
 	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_EASY)
-	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) --folder ../$(EASY_INPUT) | tee ./$(PD_OUT_EASY)
+	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) -t $(PD_NUM_OF_THREADS) --folder ../$(EASY_INPUT) | tee ./$(PD_OUT_EASY)
 
 run-parallel-data-medium: build-parallel-data
 	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_MEDIUM)
-	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) --folder ../../$(MEDIUM_INPUT) | tee ./$(PD_OUT_MEDIUM)
+	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) -t $(PD_NUM_OF_THREADS) --folder ../../$(MEDIUM_INPUT) | tee ./$(PD_OUT_MEDIUM)
 
 run-parallel-data-hard: build-parallel-data
 	rm -f ./$(PD)/$(RESULTS_DIR)/$(PD_OUT_HARD)
-	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) --folder ../../$(HARD_INPUT) | tee ./$(PD_OUT_HARD)
+	cd $(PD)/$(RESULTS_DIR) && ./$(PD_EXE) -t $(PD_NUM_OF_THREADS) --folder ../../$(HARD_INPUT) | tee ./$(PD_OUT_HARD)
 
 profile-parallel-data: build-parallel-data
 	rm -f $(PD)/$(RESULTS_DIR)/$(PROFILER_FILE) $(PD)/$(RESULTS_DIR)/$(PROFILER_PDF)
-	cd $(PD)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(PD_EXE) --file ../../$(PROFILER_INPUT)
+	cd $(PD)/$(RESULTS_DIR) && LD_PRELOAD=$(PROFILER) CPUPROFILE=$(PROFILER_FILE) CPUPROFILE_FREQUENCY=$(PROFILER_FREQ) ./$(PD_EXE) -t $(PT_NUM_OF_THREADS) --file ../../$(PROFILER_INPUT)
 	cd $(PD)/$(RESULTS_DIR) && pprof -pdf ./$(PD_EXE) $(PROFILER_FILE) > $(PROFILER_PDF)
 ########################################################################################################################
 # MPI compile
 MPI_CXX := mpic++
-MPI_CXX_FLAGS := -pedantic -Wall -Wextra -lmpi -O3 -std=c++17
+MPI_CXX_FLAGS := -pedantic -Wall -Wextra -lmpi -fopenmp -O3 -std=c++17
 # MPI Settings
 MPI := mpi
 MPI_SRC := $(MPI).cpp

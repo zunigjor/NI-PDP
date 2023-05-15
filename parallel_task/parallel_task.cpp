@@ -22,6 +22,9 @@
 #define MAX_WEIGHT 120
 #define MIN_WEIGHT 80
 
+// Default number of threads
+int number_of_threads = 1;
+
 using namespace std;
 namespace fs = std::filesystem;
 using time_point = chrono::high_resolution_clock::time_point;
@@ -416,7 +419,7 @@ public:
             best_state = initial_state;
         } else {
             initial_state.resetSolution();
-            #pragma omp parallel
+            #pragma omp parallel num_threads(number_of_threads)
                 #pragma omp single
                     findBestStateDFS(initial_state);
         }
@@ -431,6 +434,7 @@ public:
         cout << "Bipartitní souvislý podgraf hranově ohodnoceného grafu s maximální vahou" << endl;
         cout << "Parametry:" << endl;
         cout << "   -h, --help                  Výpíše tuto zprávu." << endl;
+        cout << "   -t <num of threads>         Nastaví počet vláken. Defaultní hodnota je 1." << endl;
         cout << "   --file <filepath>...        Spustí program pro soubory." << endl;
         cout << "   --folder <folderpath>...    Spustí program pro složky." << endl;
         cout << "Parametry jsou vyhodnocvány v pořadí." << endl;
@@ -489,18 +493,29 @@ public:
     static vector<ProblemInstance> readInput(int argc, char* argv[]) {
         vector<ProblemInstance> inputs;
         vector<string> args(argv + 1, argv+argc);
-        // Find flags -h, --help, --file <filepath>..., --folder <folderpath>...
+        // Find flags -h, --help, --file <filepath>..., --folder <folderpath>..., -t <int>
         bool help_arg_found_short = find(args.begin(), args.end(), "-h") != args.end();
         bool help_arg_found_long = find(args.begin(), args.end(), "--help") != args.end();
         auto file_arg_it = find(args.begin(), args.end(), "--file");
         bool file_arg_found = file_arg_it != args.end();
         auto folder_arg_it = find(args.begin(), args.end(), "--folder");
         bool folder_arg_found = folder_arg_it != args.end();
-        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found or folder_arg_found);
+        auto thread_num_arg_it = find(args.begin(), args.end(), "-t");
+        bool thread_num_arg_found = thread_num_arg_it != args.end();
+        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found or folder_arg_found or thread_num_arg_found);
         // If -h, --help or none of the accepted flags found. Print out the help message.
         if (help_arg_found_short or help_arg_found_long or !any_found) {
             InputHandler::printHelp();
             return inputs;
+        }
+        // If -t <int> is found, set the number of threads variable
+        if (thread_num_arg_found) {
+            auto num_of_threads_it = next(thread_num_arg_it);
+            if (num_of_threads_it != args.end()) {
+                istringstream iss(*num_of_threads_it);
+                iss >> number_of_threads;
+            }
+            cout << "Number of threads: " << number_of_threads << endl;
         }
         // If --file <filepath>... is present, extract from files
         if (file_arg_found) {
