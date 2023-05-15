@@ -124,34 +124,14 @@ profile-parallel-data: build-parallel-data
 # MPI compile
 MPI_CXX := mpic++
 MPI_CXX_FLAGS := -pedantic -Wall -Wextra -lmpi -O3 -std=c++17
-# MPI run
-MPI_RUN := mpirun
-MPI_RUN_FLAGS := -n 2
 # MPI Settings
 MPI := mpi
 MPI_SRC := $(MPI).cpp
 MPI_EXE := $(MPI).exe
-MPI_OUT_EASY := $(MPI)_easy.out.txt
-MPI_OUT_MEDIUM := $(MPI)_medium.out.txt
-MPI_OUT_HARD := $(MPI)_hard.out.txt
 # MPI targets
 clean-mpi:
 	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_EXE)
-	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_EASY) ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_MEDIUM) ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_HARD)
-	rm -f ./$(MPI)/$(RESULTS_DIR)/$(PROFILER_FILE) ./$(MPI)/$(RESULTS_DIR)/$(PROFILER_MPIF)
 
 build-mpi:
 	cd $(MPI) && $(MPI_CXX) $(MPI_CXX_FLAGS) $(MPI_SRC) -o $(RESULTS_DIR)/$(MPI_EXE)
-
-run-mpi-easy: build-mpi
-	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_EASY)
-	cd $(MPI)/$(RESULTS_DIR) && $(MPI_RUN) $(MPI_RUN_FLAGS) $(MPI_EXE) --folder ../../$(EASY_INPUT) | tee ./$(MPI_OUT_EASY)
-
-run-mpi-medium: build-mpi
-	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_MEDIUM)
-	cd $(MPI)/$(RESULTS_DIR) && $(MPI_RUN) $(MPI_RUN_FLAGS) $(MPI_EXE) --folder ../../$(MEDIUM_INPUT) | tee ./$(MPI_OUT_MEDIUM)
-
-run-mpi-hard: build-mpi
-	rm -f ./$(MPI)/$(RESULTS_DIR)/$(MPI_OUT_HARD)
-	cd $(MPI)/$(RESULTS_DIR) && $(MPI_RUN) $(MPI_RUN_FLAGS) $(MPI_EXE) --folder ../../$(HARD_INPUT) | tee ./$(MPI_OUT_HARD)
 ########################################################################################################################

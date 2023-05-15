@@ -23,6 +23,7 @@
 // MPI Main process id
 #define MPI_MAIN 0
 // MPI Tags
+#define TAG_NUM_OF_INPUTS 0
 #define TAG_GRAPH 1
 #define TAG_STATE 2
 #define TAG_BEST 3
@@ -63,6 +64,10 @@ public:
         MPI_Send(message.data(), int(message.size()), MPI_CHAR, dest, tag, MPI_COMM_WORLD);
     }
 
+    static void sendInt(const int & dest, const int & tag, const int & message) {
+        MPI_Send(&message, 1, MPI_INT, dest, tag, MPI_COMM_WORLD);
+    }
+
     static MPI_Status recvString(const int & source, const int & tag, string & buffer) {
         MPI_Status status;
         MPI_Probe(source, tag, MPI_COMM_WORLD, &status);
@@ -70,6 +75,12 @@ public:
         MPI_Get_count(&status, MPI_CHAR, &message_size);
         buffer.resize(message_size);
         MPI_Recv(&buffer[0], message_size, MPI_CHAR, source, tag, MPI_COMM_WORLD, &status);
+        return status;
+    }
+
+    static MPI_Status recvInt(const int & source, const int & tag, int & message) {
+        MPI_Status status;
+        MPI_Recv(&message, 1, MPI_INT, source, tag, MPI_COMM_WORLD, &status);
         return status;
     }
 };
@@ -126,8 +137,8 @@ public:
         int u, v, w, size;
         istringstream iss(input);
         for (auto & edge : edges){
-            iss >> u;   edge.v = v;
-            iss >> v;   edge.u = u;
+            iss >> u;   edge.u = u;
+            iss >> v;   edge.v = v;
             iss >> w;   edge.weight = w;
         }
         iss >> size;    edges_size = size;
@@ -467,7 +478,6 @@ public:
             // Send graph to all workers
             for (int i = 1; i < world_size; i++) {
                 MyMpi::sendString(i, TAG_GRAPH, graph.toString());
-                cout << "[MPI] M0 --> W" << i << ": graph" << endl;
             }
             // Send work
             int running_workers = 1;
@@ -475,19 +485,16 @@ public:
                 if (running_workers < world_size) {
                     MyMpi::sendString(running_workers, TAG_STATE, solution_states_queue.front().toString());
                     solution_states_queue.erase(solution_states_queue.begin());
-                    cout << "[MPI] M0 --> W" << running_workers << ": state" << endl;
                     running_workers++;
                 } else {
                     SolutionState potential_new_best;
                     string potential_new_best_str;
                     MPI_Status status = MyMpi::recvString(MPI_ANY_SOURCE, TAG_BEST, potential_new_best_str);
                     potential_new_best.fromString(potential_new_best_str, &graph);
-                    cout << "[MPI] M0 <-- W" << running_workers << ": pot best: " << potential_new_best.cost << endl;
                     if (potential_new_best.isBetterThan(best_state)) {
                         best_state = potential_new_best;
                     } else {
                         MyMpi::sendString(status.MPI_SOURCE, TAG_STATE, best_state.toString());
-                        cout << "[MPI] M0 <-- W" << running_workers << ": new best: " << best_state.cost << endl;
                     }
                     MyMpi::sendString(status.MPI_SOURCE, TAG_STATE, solution_states_queue.front().toString());
                     solution_states_queue.erase(solution_states_queue.begin());
@@ -501,7 +508,7 @@ public:
                 potential_new_best.fromString(potential_new_best_str, &graph);
                 if (potential_new_best.isBetterThan(best_state))
                     best_state = potential_new_best;
-                MyMpi::sendString(status.MPI_SOURCE, TAG_STATE, initial_state.toString());
+                MyMpi::sendString(running_workers - 1, TAG_STATE, initial_state.toString());
                 running_workers--;
             }
         }
@@ -618,28 +625,23 @@ private:
         }
     }
 public:
-    void workerMain(int rank){
+    void workerMain(){
         // Receive graph
         string graph_str;
         MyMpi::recvString(MPI_MAIN, TAG_GRAPH, graph_str);
-        cout << "[MPI] W" << rank << " <-- M0: graph" << endl;
         graph.fromString(graph_str);
         // Receive work
         while (true) {
             string initial_state_str;
             MyMpi::recvString(MPI_MAIN, TAG_STATE, initial_state_str);
-            cout << "[MPI] W" << rank << " <-- M0: state" << endl;
             initial_state.fromString(initial_state_str, &graph);
             if (all_of(initial_state.colors, initial_state.colors + MAX_VERTICES, [](color_t c){return c == NO_COLOR;})) {
-                cout << "[MPI] W" << rank << " <-- M0: end" << endl;
                 break;
             } else if (initial_state.isLeaf() and initial_state.isBetterThan(best_state)) {
                 best_state = initial_state;
-                cout << "[MPI] W" << rank << " <-- M0: new best: " << best_state.cost << endl;
             } else {
                 findBestStateDFS(initial_state);
                 MyMpi::sendString(MPI_MAIN, TAG_BEST, best_state.toString());
-                cout << "[MPI] W" << rank << " --> M0: pot best: " << best_state.cost << endl;
             }
         }
     }
@@ -688,36 +690,15 @@ public:
         return inputs;
     }
 
-    static vector<ProblemInstance> readFromFolder(const string & input_folder_path) {
-        vector<ProblemInstance> inputs;
-        cout << "Loaded folder " << input_folder_path << endl;
-        if ( ! fs::is_directory(fs::path(input_folder_path))) {
-            cout << "Folder \"" << input_folder_path << "\" does not exist" << endl;
-            return inputs;
-        }
-        vector<string> paths_to_files;
-        for (const auto & entry : fs::directory_iterator(input_folder_path)) {
-            paths_to_files.push_back(entry.path());
-        }
-        sort(paths_to_files.begin(), paths_to_files.end());
-        for (const auto & file_path : paths_to_files) {
-            vector<ProblemInstance> input = readFromFile(file_path);
-            inputs.insert(inputs.end(), input.begin(), input.end());
-        }
-        return inputs;
-    }
-
     static vector<ProblemInstance> readInput(int argc, char* argv[]) {
         vector<ProblemInstance> inputs;
         vector<string> args(argv + 1, argv+argc);
-        // Find flags -h, --help, --file <filepath>..., --folder <folderpath>...
+        // Find flags -h, --help, --file <filepath>...
         bool help_arg_found_short = find(args.begin(), args.end(), "-h") != args.end();
         bool help_arg_found_long = find(args.begin(), args.end(), "--help") != args.end();
         auto file_arg_it = find(args.begin(), args.end(), "--file");
         bool file_arg_found = file_arg_it != args.end();
-        auto folder_arg_it = find(args.begin(), args.end(), "--folder");
-        bool folder_arg_found = folder_arg_it != args.end();
-        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found or folder_arg_found);
+        bool any_found = (help_arg_found_short or help_arg_found_long or file_arg_found);
         // If -h, --help or none of the accepted flags found. Print out the help message.
         if (help_arg_found_short or help_arg_found_long or !any_found) {
             InputHandler::printHelp();
@@ -732,15 +713,6 @@ public:
                 input_files_it = next(input_files_it);
             }
         }
-        // If --folder <folderpath>... is present, extract from folders
-        if (folder_arg_found) {
-            auto input_folders_it = next(folder_arg_it);
-            while (input_folders_it != args.end() and *input_folders_it != "--file") {
-                vector<ProblemInstance> folder_inputs = InputHandler::readFromFolder(*input_folders_it);
-                inputs.insert(inputs.end(), folder_inputs.begin(), folder_inputs.end());
-                input_folders_it = next(input_folders_it);
-            }
-        }
         return inputs;
     }
 };
@@ -751,7 +723,6 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     // Main process
     if (rank == MPI_MAIN) {
-        cout << "[MPI] M" << rank << ": start" << endl;
         // Read input
         vector<ProblemInstance> inputs = InputHandler::readInput(argc, argv);
         // Measure time
@@ -814,14 +785,11 @@ int main(int argc, char* argv[]) {
                     cout << problem_instance.getInputName() << " expected: " << expected << " got: " << got << endl;
             }
         }
-        cout << "[MPI] M" << rank << ": end" << endl;
     }
     // Worker process
     if (rank != MPI_MAIN) {
-        cout << "[MPI] W" << rank << ": start" << endl;
         Worker worker;
-        worker.workerMain(rank);
-        cout << "[MPI] W" << rank << ": end" << endl;
+        worker.workerMain();
     }
     MPI_Finalize();
     return 0;
