@@ -1,3 +1,14 @@
+# NI-PDP
+
+| Úloha                                                                                                                                          |    Body |
+|:-----------------------------------------------------------------------------------------------------------------------------------------------|--------:|
+| [Návrh a implementace sekvenčního algoritmu řešení semestrální úlohy](./sequential)                                                            |  5 / 5  |
+| [Návrh a implementace paralelního algoritmu pro vícejádrový systém s použitím knihovny OpenMP - verze s task paralelismem](./parallel_task)    |  5 / 5  |
+| [Návrh a implementace paralelního algoritmu pro vícejádrový systém s použitím knihovny OpenMP - verze s datovým paralelismem](./parallel_task) | 10 / 10 |
+| [Návrh a implementace paralelního algoritmu pro distribuovaný výpočetní klastr s použitím knihovny MPI](./mpi)                                 | 17 / 15 |
+| [Teoretická a praktická analýza chování paralelního programu a vypracování technické zprávy.](zunigjor_NI-PDP_report.pdf)                      | 15 / 15 |
+| Celkem                                                                                                                                         | 52 / 50 |
+
 ## Bipartitní souvislý podgraf hranově ohodnoceného grafu s maximální vahou
 
 ### Vstupní data:
